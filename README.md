@@ -40,7 +40,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
   cycles through them.
 - Copy and paste with the mouse on (the default):
   - Drag over the conversation to select text; it is copied to the clipboard when you let go.
-  - Click a link to open it in your browser. Links in replies, Gemini sources and URLs you typed all
+  - Links are underlined. Click one to open it in your browser; links in replies, Gemini sources and URLs you typed all
     work. Only `http`, `https` and `mailto` links are opened; over SSH the link is copied instead,
     since a browser would open on the remote machine.
   - Ctrl+V or the middle button pastes. Your terminal's own paste (Ctrl+Shift+V, Cmd+V) works too.
