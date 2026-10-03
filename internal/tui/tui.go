@@ -449,7 +449,7 @@ func (m *model) refresh() {
 		return
 	}
 	atBottom := m.viewport.AtBottom() || m.viewport.TotalLineCount() <= m.viewport.Height()
-	content := m.transcript()
+	content := underlineLinks(m.transcript())
 	m.lines = strings.Split(content, "\n")
 	m.viewport.SetContent(content)
 	if atBottom {

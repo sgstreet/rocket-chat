@@ -191,22 +191,10 @@ func linkAt(line string, col int) string {
 	pos, link := 0, ""
 	for i := 0; i < len(line); {
 		if line[i] == 0x1b && i+1 < len(line) {
-			switch line[i+1] {
-			case ']': // OSC, ended by BEL or ESC \
-				end, next := oscEnd(line, i+2)
-				if rest, ok := strings.CutPrefix(line[i+2:end], "8;"); ok {
-					_, link, _ = strings.Cut(rest, ";")
-				}
-				i = next
-			case '[': // CSI: parameters, then a final byte in 0x40–0x7e
-				j := i + 2
-				for j < len(line) && (line[j] < 0x40 || line[j] > 0x7e) {
-					j++
-				}
-				i = j + 1
-			default:
-				i += 2
+			if url, ok := osc8(line, i); ok {
+				link = url
 			}
+			i = seqEnd(line, i)
 			continue
 		}
 		r, size := utf8.DecodeRuneInString(line[i:])
