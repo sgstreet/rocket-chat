@@ -84,6 +84,11 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 				endErrLine()
 				fmt.Fprintf(o.errOut, "Searching: %s\n", ev.Query)
 			}
+		case backend.EventNotice:
+			if o.progress {
+				endErrLine()
+				fmt.Fprintln(o.errOut, ev.Text)
+			}
 		case backend.EventFetchStarted:
 			if o.progress {
 				endErrLine()

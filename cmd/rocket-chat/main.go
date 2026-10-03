@@ -136,7 +136,23 @@ Flags:
 	if name == "" {
 		name = cfg.DefaultBackend
 	}
-	open := func(name string) (backend.Backend, error) { return backend.Open(name, cfg.Decoder(name)) }
+	// Every backend opened is closed on the way out, which stops any local
+	// server it started.
+	var opened []backend.Backend
+	defer func() {
+		for _, b := range opened {
+			if err := backend.Close(b); err != nil {
+				fmt.Fprintln(e.stderr, "rocket-chat:", err)
+			}
+		}
+	}()
+	open := func(name string) (backend.Backend, error) {
+		b, err := backend.Open(name, cfg.Decoder(name))
+		if err == nil {
+			opened = append(opened, b)
+		}
+		return b, err
+	}
 	var search *bool
 	if searchSet {
 		search = &o.search
