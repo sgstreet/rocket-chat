@@ -36,6 +36,8 @@ type Options struct {
 	Store *store.Store
 	// Resume, when set, is a saved session to continue.
 	Resume *store.Session
+	// Theme is "dark", "light", or "" to follow the terminal background.
+	Theme string
 }
 
 // Run starts the chat and blocks until the user quits or ctx ends.
@@ -114,7 +116,7 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		viewport:    viewport.New(),
 		input:       in,
 		spinner:     spinner.New(spinner.WithSpinner(spinner.MiniDot)),
-		dark:        true,
+		dark:        opts.Theme != "light",
 		md:          &markdown{},
 	}
 	m.setStyles()
@@ -133,6 +135,9 @@ func (m *model) stop() {
 }
 
 func (m *model) Init() tea.Cmd {
+	if m.opts.Theme != "" {
+		return textarea.Blink
+	}
 	return tea.Batch(tea.RequestBackgroundColor, textarea.Blink)
 }
 
@@ -144,6 +149,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.BackgroundColorMsg:
+		if m.opts.Theme != "" {
+			return m, nil
+		}
 		m.dark = msg.IsDark()
 		m.setStyles()
 		m.refresh()

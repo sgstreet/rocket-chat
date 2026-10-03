@@ -7,6 +7,11 @@ A terminal chat application in Go with pluggable backends:
 
 Status: early development. See [docs/PLAN.md](docs/PLAN.md) for the feature set and roadmap.
 
+## Installing
+
+Download a binary for Linux, macOS or Windows from the
+[releases page](https://github.com/sgstreet/rocket-chat/releases), or build from source.
+
 ## Building
 
 Requires Go 1.26 or newer.
@@ -26,7 +31,11 @@ Run `rocket-chat` with no prompt for the interactive chat:
 - Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn scroll,
   Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/quit`.
+  `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/sessions`, `/resume`,
+  `/export`, `/copy`, `/quit`.
+- `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
+  uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
+  `set -g set-clipboard on`.
 - Switching from Gemini to another backend keeps the conversation, but answers grounded with
   Google Search are not sent to the other backend (Gemini API terms).
 - Chats are saved after every reply. `/sessions` lists them, `/resume [number]` continues one,
@@ -53,6 +62,8 @@ The config file is `$ROCKET_CHAT_CONFIG`, or `rocket-chat/config.yaml` under the
 directory (`~/.config` on Linux). `ROCKET_CHAT_BACKEND` overrides `default_backend`.
 
 ```yaml
+ui:
+  theme: auto                      # auto (follow the terminal), dark or light
 sessions:
   save: true                       # save interactive chats (default true)
   dir: ~/chats                     # default: $XDG_DATA_HOME/rocket-chat/sessions

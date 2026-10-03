@@ -2,7 +2,7 @@ BINARY  := rocket-chat
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -X main.version=$(VERSION)
 
-.PHONY: all build test lint fmt vet clean
+.PHONY: all build test lint fmt vet clean snapshot
 
 all: lint test build
 
@@ -21,5 +21,9 @@ lint: vet
 fmt:
 	gofmt -w .
 
+# Build release archives locally without publishing (needs goreleaser).
+snapshot:
+	goreleaser release --snapshot --clean
+
 clean:
-	rm -rf bin
+	rm -rf bin dist

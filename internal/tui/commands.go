@@ -23,6 +23,7 @@ const helpText = `Commands:
   /sessions              list saved chats
   /resume [number|id]    continue a saved chat (default: the most recent)
   /export [file]         save this chat as Markdown
+  /copy [code|number]    copy the last reply, its last code block, or code block N
   /quit                  leave (also ctrl+c, or ctrl+d on an empty line)
 
 Keys: enter sends · alt+enter or ctrl+j adds a line · esc stops an answer · pgup/pgdn and shift+up/down scroll`
@@ -38,7 +39,7 @@ type modelsMsg struct {
 func (m *model) command(line string) tea.Cmd {
 	name, arg, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	arg = strings.TrimSpace(arg)
-	if m.streaming && name != "help" && name != "thinking" && name != "quit" && name != "exit" {
+	if m.streaming && !slices.Contains([]string{"help", "thinking", "quit", "exit", "copy"}, name) {
 		m.notice("Still answering; press Esc to stop it before /%s.", name)
 		return nil
 	}
@@ -58,6 +59,8 @@ func (m *model) command(line string) tea.Cmd {
 		m.resume(arg)
 	case "export":
 		m.export(arg)
+	case "copy":
+		return m.copyReply(arg)
 	case "thinking":
 		m.showThinking = !m.showThinking
 		m.refresh()
