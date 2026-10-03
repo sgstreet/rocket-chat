@@ -150,8 +150,53 @@ file, relative to the config file's directory:
 }
 ```
 
-`search` turns web search on or off while the role is in use, unless `--search` or `/search` says
-otherwise. `default_role` applies when neither `--role` nor `-s` is given.
+Each entry under `roles` is keyed by the role's ID: lowercase letters, digits and dashes, used with
+`--role` and `/role`. Reusing a built-in's ID (`general`, `technical`, `research`) replaces the whole
+role, so give the replacement its own `name`, `description` and `search` too; any other ID adds a
+role.
+
+| Field | Meaning |
+|---|---|
+| `name` | Display name in lists and the status bar; defaults to the ID |
+| `description` | One line shown in `/role` and `--list-roles` |
+| `prompt` | The system prompt, written inline |
+| `file` | A file holding the system prompt, instead of `prompt` |
+| `search` | `true` or `false` turns web search on or off while the role is in use, unless `--search` or `/search` says otherwise; leave it out to keep the backend's default |
+
+`default_role` applies when neither `--role` nor `-s` is given.
+
+### Prompts in files
+
+A role needs exactly one of `prompt` or `file`; giving both, or neither, is an error that names the
+role. Use `file` for long prompts, which are awkward as one JSON string:
+
+- A relative path is relative to the config file's directory, so with the default config
+  `prompts/technical.md` means `~/.config/rocket-chat/prompts/technical.md` on Linux. Paths starting with
+  `~/` are under your home directory, and absolute paths are used as they are.
+- The file's contents are the prompt, word for word, with surrounding whitespace removed.
+  It is plain text: the `.md` extension is only a name, and the file is not parsed or rendered.
+- The file is read when rocket-chat starts, so restart it after editing. A missing or empty file is
+  an error.
+
+To customise a built-in role, start from its current prompt:
+
+```sh
+mkdir -p ~/.config/rocket-chat/prompts
+rocket-chat --show-role technical > ~/.config/rocket-chat/prompts/technical.md
+```
+
+Edit the file, point the role at it in `config.json`, and check the result with
+`rocket-chat --show-role technical`:
+
+```json
+"roles": {
+  "technical": {
+    "name": "Technical Adviser",
+    "description": "Engineering and software questions, with trade-offs and working code",
+    "file": "prompts/technical.md"
+  }
+}
+```
 
 ## Releasing
 
