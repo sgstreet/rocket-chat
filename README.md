@@ -210,6 +210,11 @@ and arm64, plus `checksums.txt`, attached to a GitHub release. Start one either 
 - Or run the Release workflow from the Actions tab (or the API) on `main` with a version such as
   `v0.2.0`. It checks the version, runs the tests, creates and pushes the tag, then releases.
 
+Release notes come from `docs/release-notes/<version>.md` when that file exists on `main` (write it
+before starting the release); otherwise the release lists the merged commits. To change the notes of
+a release that is already published, edit or add its file on `main` and run the Release notes
+workflow with the version.
+
 `make snapshot` builds the same archives locally without publishing.
 
 ## API keys

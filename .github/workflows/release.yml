@@ -58,9 +58,22 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git tag -a "$VERSION" -m "rocket-chat $VERSION"
           git push origin "refs/tags/$VERSION"
+      - name: Choose the release notes
+        id: notes
+        env:
+          VERSION: ${{ inputs.version || github.ref_name }}
+        run: |
+          # Hand-written notes in docs/release-notes/<version>.md replace the
+          # generated list of commits.
+          notes="docs/release-notes/$VERSION.md"
+          if [[ -f "$notes" ]]; then
+            echo "args=release --clean --release-notes $notes" >> "$GITHUB_OUTPUT"
+          else
+            echo "args=release --clean" >> "$GITHUB_OUTPUT"
+          fi
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
-          args: release --clean
+          args: ${{ steps.notes.outputs.args }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
