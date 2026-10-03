@@ -55,8 +55,14 @@ type Span struct {
 
 // Suggestions are provider-supplied search suggestions.
 type Suggestions struct {
-	// Queries are the suggestion texts, extracted for terminal display.
-	Queries []string `json:"queries,omitempty"`
+	// Links are the suggestions extracted for terminal display.
+	Links []Link `json:"links,omitempty"`
 	// HTML is the provider's original rendering.
 	HTML string `json:"html,omitempty"`
+}
+
+// Link is a piece of text and the URL it points to.
+type Link struct {
+	Text string `json:"text"`
+	URL  string `json:"url,omitempty"`
 }

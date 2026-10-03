@@ -20,6 +20,7 @@ import (
 
 	// Backends register themselves in init.
 	_ "github.com/sgstreet/rocket-chat/internal/backend/fake"
+	_ "github.com/sgstreet/rocket-chat/internal/backend/gemini"
 	_ "github.com/sgstreet/rocket-chat/internal/backend/ollama"
 )
 
@@ -41,6 +42,7 @@ type env struct {
 	// stdinIsInput reports whether stdin is a pipe or file to read the
 	// prompt from.
 	stdinIsInput     bool
+	stdoutIsTerminal bool
 	stderrIsTerminal bool
 }
 
@@ -51,6 +53,7 @@ func main() {
 		stdout:           os.Stdout,
 		stderr:           os.Stderr,
 		stdinIsInput:     isInput(os.Stdin),
+		stdoutIsTerminal: isTerminal(os.Stdout),
 		stderrIsTerminal: isTerminal(os.Stderr),
 	})
 	stop()
@@ -162,6 +165,7 @@ Flags:
 		progress:    o.verbose || e.stderrIsTerminal,
 		thinking:    o.thinking,
 		verbose:     o.verbose,
+		buffer:      b.Capabilities().InlineCitations && !e.stdoutIsTerminal,
 	}
 	if err := shot.run(ctx, b, req); err != nil {
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {

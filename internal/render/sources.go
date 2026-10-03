@@ -37,10 +37,14 @@ func Sources(g *chat.Grounding) string {
 		fmt.Fprintf(&b, "Searched: %s\n", strings.Join(quoted, ", "))
 	}
 
-	if s := g.Suggestions; s != nil && len(s.Queries) > 0 {
+	if s := g.Suggestions; s != nil && len(s.Links) > 0 {
 		b.WriteString("Google Search suggestions:\n")
-		for _, q := range s.Queries {
-			fmt.Fprintf(&b, "  %s  <%s>\n", q, GoogleSearchURL(q))
+		for _, l := range s.Links {
+			u := l.URL
+			if u == "" {
+				u = GoogleSearchURL(l.Text)
+			}
+			fmt.Fprintf(&b, "  %s  <%s>\n", l.Text, u)
 		}
 	}
 	return b.String()

@@ -46,9 +46,13 @@ Also consulted:
 		},
 		{
 			name: "suggestions",
-			g:    &chat.Grounding{Suggestions: &chat.Suggestions{Queries: []string{"euro 2024 final"}}},
+			g: &chat.Grounding{Suggestions: &chat.Suggestions{Links: []chat.Link{
+				{Text: "euro 2024 final"},
+				{Text: "euro 2024 winner", URL: "https://www.google.com/search?q=euro+2024+winner&client=app"},
+			}}},
 			want: `Google Search suggestions:
   euro 2024 final  <https://www.google.com/search?q=euro+2024+final>
+  euro 2024 winner  <https://www.google.com/search?q=euro+2024+winner&client=app>
 `,
 		},
 	}
