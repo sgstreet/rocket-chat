@@ -386,6 +386,17 @@ func TestMissingConfigFlagIsAnError(t *testing.T) {
 	}
 }
 
+func TestJSONConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"default_backend": "fake", "backends": {"fake": {"delay": "1ms"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := cli(t, t.Context(), nil, "--config", path, "from", "json")
+	if r.code != exitOK || r.out != "from json\n" {
+		t.Errorf("got %+v", r)
+	}
+}
+
 func TestDefaultBackendFromConfig(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	if err := os.WriteFile(path, []byte("default_backend: fake\n"), 0o600); err != nil {

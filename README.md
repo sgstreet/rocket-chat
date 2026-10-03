@@ -58,8 +58,34 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
 
 ## Configuration
 
-The config file is `$ROCKET_CHAT_CONFIG`, or `rocket-chat/config.yaml` under the user config
-directory (`~/.config` on Linux). `ROCKET_CHAT_BACKEND` overrides `default_backend`.
+The config file is the one named by `--config` or `$ROCKET_CHAT_CONFIG`, or else `config.yaml`,
+`config.yml` or `config.json` in `rocket-chat/` under the user config directory (`~/.config` on
+Linux); keep only one of those. Files ending in `.json` are read as JSON, all others as YAML; both
+accept the same settings. `ROCKET_CHAT_BACKEND` overrides `default_backend`. Unknown settings are
+errors, so typos are caught.
+
+An example in JSON:
+
+```json
+{
+  "default_backend": "ollama",
+  "ui": { "theme": "auto" },
+  "sessions": { "save": true },
+  "backends": {
+    "ollama": {
+      "model": "qwen3:4b",
+      "keep_alive": "10m",
+      "search": { "enabled": false, "max_results": 5 }
+    },
+    "gemini": {
+      "search": { "enabled": true, "since": "168h" }
+    }
+  }
+}
+```
+
+Durations such as `keep_alive` and `since` are strings with a unit (`"10m"`, `"168h"`). The
+settings, described in YAML (Gemini's are under [Gemini](#gemini)):
 
 ```yaml
 ui:
