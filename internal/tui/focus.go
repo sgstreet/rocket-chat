@@ -77,7 +77,7 @@ func (m *model) placeCursor(row, x int) {
 		c := m.input // a copy, to ask where the real cursor would be
 		c.SetVirtualCursor(false)
 		if p := c.Cursor(); p != nil {
-			return p.Position.Y
+			return p.Y
 		}
 		return row
 	}
