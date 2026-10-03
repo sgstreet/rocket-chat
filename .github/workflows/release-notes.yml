@@ -1,0 +1,32 @@
+name: Release notes
+
+# Replaces the notes of a published release with
+# docs/release-notes/<version>.md from main. Run it from the Actions tab
+# (or the API) after editing the notes of a release that already exists.
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release to update, for example v0.5.0"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  notes:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Update the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          notes="docs/release-notes/$VERSION.md"
+          if [[ ! -f "$notes" ]]; then
+            echo "::error::$notes does not exist on $GITHUB_REF"
+            exit 1
+          fi
+          gh release edit "$VERSION" --notes-file "$notes"
