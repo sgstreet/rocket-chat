@@ -116,6 +116,7 @@ config file:
 ```sh
 rocket-chat --set-key gemini            # prompts for the key; nothing is shown as you type
 rocket-chat --set-key ollama < key.txt  # or pipe it in
+rocket-chat -b gemini --set-key AIza…   # or give it directly (it stays in your shell history)
 rocket-chat --remove-key gemini
 ```
 

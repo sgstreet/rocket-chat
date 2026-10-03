@@ -60,8 +60,8 @@ func TestSetKeyFromStdin(t *testing.T) {
 func TestSetKeyErrors(t *testing.T) {
 	clearKeyEnv(t)
 	key := "k"
-	if r := cli(t, t.Context(), &key, "--set-key", "fake"); r.code != exitUsage || !strings.Contains(r.errOut, "fake takes no API key") {
-		t.Errorf("unknown backend: %+v", r)
+	if r := cli(t, t.Context(), &key, "--set-key", "fake"); r.code != exitUsage || !strings.Contains(r.errOut, "takes a backend name (gemini, ollama)") {
+		t.Errorf("not a backend with a key: %+v", r)
 	}
 	if r := cli(t, t.Context(), nil, "--set-key", "gemini"); r.code != exitUsage || !strings.Contains(r.errOut, "reads the key from stdin") {
 		t.Errorf("no input: %+v", r)
@@ -131,5 +131,34 @@ func TestPromptForKey(t *testing.T) {
 	t.Setenv("GEMINI_API_KEY", "x")
 	if got := keys.Status("gemini"); got != "from $GEMINI_API_KEY" {
 		t.Errorf("status = %q", got)
+	}
+}
+
+func TestSetKeyAsFlagValue(t *testing.T) {
+	clearKeyEnv(t)
+	const secret = "AQ.Ab8-test_KEY"
+	path := filepath.Join(t.TempDir(), "config.json")
+
+	r := cli(t, t.Context(), nil, "--config", path, "--backend", "gemini", "--set-key", secret)
+	if r.code != exitOK || savedKey(t, path, "gemini") != secret {
+		t.Fatalf("got %+v, saved %q", r, savedKey(t, path, "gemini"))
+	}
+	if !strings.Contains(r.errOut, "shell history") || strings.Contains(r.out+r.errOut, secret) {
+		t.Errorf("want a history note and no echo of the key: %+v", r)
+	}
+
+	// Errors never repeat a value that may be a key.
+	for _, args := range [][]string{
+		{"--set-key", secret},
+		{"-b", "fake", "--set-key", secret},
+		{"--remove-key", secret},
+	} {
+		r := cli(t, t.Context(), nil, args...)
+		if r.code != exitUsage || strings.Contains(r.out+r.errOut, secret) {
+			t.Errorf("%v: %+v", args, r)
+		}
+	}
+	if r := cli(t, t.Context(), nil, "-b", "fake", "--set-key", secret); !strings.Contains(r.errOut, "fake takes no API key") {
+		t.Errorf("backend without keys: %+v", r)
 	}
 }
