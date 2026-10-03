@@ -1,0 +1,62 @@
+// Package chat holds the conversation types shared by the UI, storage and
+// every backend. It must not depend on any backend package.
+package chat
+
+// Role identifies who authored a message.
+type Role string
+
+const (
+	RoleSystem    Role = "system"
+	RoleUser      Role = "user"
+	RoleAssistant Role = "assistant"
+)
+
+// Message is one turn in a conversation.
+type Message struct {
+	Role Role   `json:"role"`
+	Text string `json:"text"`
+	// Thinking is the model's reasoning output, when the model produces it.
+	Thinking string `json:"thinking,omitempty"`
+	// Backend is the name of the backend that produced an assistant message.
+	Backend string `json:"backend,omitempty"`
+	// Grounding describes the web sources behind an assistant message.
+	Grounding *Grounding `json:"grounding,omitempty"`
+}
+
+// Grounding describes the web search behind an answer.
+type Grounding struct {
+	Sources []Source `json:"sources,omitempty"`
+	// Spans link byte ranges of the answer text to sources. Only backends
+	// with inline citations (Gemini) fill this in.
+	Spans []Span `json:"spans,omitempty"`
+	// Queries are the search queries that were run.
+	Queries []string `json:"queries,omitempty"`
+	// Suggestions are search suggestions the provider requires to be shown
+	// alongside the answer (Gemini).
+	Suggestions *Suggestions `json:"suggestions,omitempty"`
+}
+
+// Source is one web page consulted for an answer.
+type Source struct {
+	Title   string `json:"title,omitempty"`
+	URL     string `json:"url"`
+	Snippet string `json:"snippet,omitempty"`
+	// Cited reports whether the answer cites this source.
+	Cited bool `json:"cited,omitempty"`
+}
+
+// Span attributes the answer bytes [Start, End) to Sources[i] for each i in
+// SourceIndexes.
+type Span struct {
+	Start         int   `json:"start"`
+	End           int   `json:"end"`
+	SourceIndexes []int `json:"source_indexes"`
+}
+
+// Suggestions are provider-supplied search suggestions.
+type Suggestions struct {
+	// Queries are the suggestion texts, extracted for terminal display.
+	Queries []string `json:"queries,omitempty"`
+	// HTML is the provider's original rendering.
+	HTML string `json:"html,omitempty"`
+}
