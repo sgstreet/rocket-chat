@@ -44,6 +44,7 @@ type fakeServer struct {
 func newFakeServer(t *testing.T, chunks ...api.ChatResponse) *fakeServer {
 	t.Helper()
 	fs := &fakeServer{chunks: chunks}
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir()) // the server registry goes here
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /api/chat", fs.chat)
 	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, _ *http.Request) {

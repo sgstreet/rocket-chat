@@ -306,7 +306,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `temperature` | model default | Sampling temperature |
 | `num_ctx` | model default | Context window in tokens |
 | `keep_alive` | Ollama default | How long the model stays loaded |
-| `unload_on_exit` | `true` | Unload the models used when rocket-chat exits, freeing their memory (see below) |
+| `unload_on_exit` | `true` | Unload the models used when rocket-chat exits, unless another running copy uses them (see below) |
 | `think` | model default | `true`/`false` turns reasoning on or off |
 | `search.enabled` | `false` | Web search default; `--search` overrides |
 | `search.mode` | `auto` | `auto`, `direct` or `local` (see below) |
@@ -316,24 +316,30 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `search.max_fetch_chars` | `8000` | Fetched pages are cut to this |
 | `search.num_ctx` | `32768` | Minimum context window while searching |
 | `search.api_url` | `https://ollama.com` | Web search API for `direct` mode |
-| `serve.auto_start` | `true` | Start `ollama serve` when no server answers at a local host, and stop it on exit |
+| `serve.auto_start` | `true` | Start `ollama serve` when no server answers at a local host, and stop it when the last rocket-chat using it exits |
 | `serve.command` | `ollama` | The ollama executable, found in `PATH` |
 | `serve.start_timeout` | `"30s"` | How long to wait for a started server to answer |
 
 ### Starting Ollama automatically
 
 When the Ollama host is this machine (`localhost`, `127.0.0.1` or `::1`) and nothing answers there,
-rocket-chat runs `ollama serve` for that address, says so, waits until it answers, and stops it when
-rocket-chat exits. A server that was already running is used and left running; remote hosts are
-never started. The started server's output goes to `rocket-chat/ollama-serve.log` in the user cache
-directory (`~/.cache` on Linux). Set `"serve": {"auto_start": false}` to turn this off.
+rocket-chat runs `ollama serve` for that address, says so, and waits until it answers. Remote hosts
+are never started. The started server's output goes to `rocket-chat/ollama-serve.log` in the user
+cache directory (`~/.cache` on Linux). Set `"serve": {"auto_start": false}` to turn this off.
 
-A server that was already running, such as the `ollama` system service the Linux installer sets up,
-keeps a model in memory for `keep_alive` after its last request (5 minutes by default), which can
-hold several GB of GPU memory. So when rocket-chat exits, it asks that server to unload the models
-it chatted with; the server keeps running. Another program using the same model loads it again on
-its next request. Set `"unload_on_exit": false` to leave the models loaded, for example when
-`keep_alive` is set to keep them warm. `ollama ps` shows what is loaded.
+Copies of rocket-chat running at the same time share the server. A second copy uses the server the
+first one started, and the server stops when the last copy using it exits, whichever copy that is.
+It also stops if that copy crashes or its terminal is closed. On Linux and macOS, rocket-chat keeps
+track of this with a small supervisor process (rocket-chat itself, running `ollama serve`) and a
+registry of the copies using the server, in `$XDG_RUNTIME_DIR/rocket-chat` (or the user cache
+directory). On Windows, the server stops when the copy that started it exits.
+
+A server rocket-chat did not start, such as the `ollama` system service the Linux installer sets up,
+is never stopped. It keeps a model in memory for `keep_alive` after its last request (5 minutes by
+default), which can hold several GB of GPU memory, so when rocket-chat exits it asks the server to
+unload the models it chatted with. Models another running copy of rocket-chat has used stay loaded.
+Set `"unload_on_exit": false` to leave the models loaded, for example when `keep_alive` is set to
+keep them warm. `ollama ps` shows what is loaded.
 
 ### Ollama web search
 

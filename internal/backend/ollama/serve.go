@@ -20,8 +20,8 @@ import (
 // ServeSettings is the backends.ollama.serve config section.
 type ServeSettings struct {
 	// AutoStart runs `ollama serve` when the server at a local host is not
-	// running, and stops it when rocket-chat exits. Default true. A server
-	// that was already running is never stopped.
+	// running, and stops it when the last rocket-chat using it exits.
+	// Default true. A server rocket-chat did not start is never stopped.
 	AutoStart *bool `json:"auto_start"`
 	// Command is the ollama executable (default "ollama", found in PATH).
 	Command string `json:"command"`
@@ -43,6 +43,10 @@ func (s ServeSettings) startTimeout() time.Duration {
 // before it is killed.
 const stopTimeout = 10 * time.Second
 
+// supervisorStopTimeout is how long a supervisor gets to stop its server
+// and exit.
+const supervisorStopTimeout = stopTimeout + 5*time.Second
+
 // pollInterval is how often a starting server is checked.
 const pollInterval = 200 * time.Millisecond
 
@@ -63,84 +67,106 @@ func isUnreachable(err error) bool {
 	return errors.Is(err, syscall.ECONNREFUSED) || (errors.As(err, &opErr) && opErr.Op == "dial")
 }
 
-// localServer is an `ollama serve` process started by rocket-chat.
-type localServer struct {
-	cmd     *exec.Cmd
-	logPath string
-	// done is closed when the process has exited; waitErr is then set.
-	done    chan struct{}
-	waitErr error
-}
+// errExited and errNoAnswer are how waitReady fails.
+var (
+	errExited   = errors.New("exited")
+	errNoAnswer = errors.New("no answer")
+)
 
-// startServer runs `ollama serve` for host and waits until ping succeeds. It
-// returns nil and no error when the process exits but a server answers
-// anyway: another program started one at the same time, and it is not ours
-// to stop.
-func startServer(ctx context.Context, s ServeSettings, host *url.URL, ping func(context.Context) error) (*localServer, error) {
+// lookCommand finds the ollama executable.
+func lookCommand(s ServeSettings, host *url.URL) (string, error) {
 	name := cmp.Or(s.Command, "ollama")
 	path, err := exec.LookPath(name)
 	if err != nil {
-		return nil, fmt.Errorf("ollama is not running at %s and %q was not found to start it; "+
+		return "", fmt.Errorf("ollama is not running at %s and %q was not found to start it; "+
 			"install Ollama from https://ollama.com/download or set backends.ollama.serve.command", host, name)
 	}
+	return path, nil
+}
 
-	logPath, logFile := openServeLog()
-	cmd := exec.Command(path, "serve")
-	cmd.Env = append(os.Environ(), "OLLAMA_HOST="+host.String())
-	cmd.Stdout, cmd.Stderr = logFile, logFile
-	setProcAttr(cmd)
-	err = cmd.Start()
-	_ = logFile.Close() // the child has its own copy
-	if err != nil {
-		return nil, fmt.Errorf("starting %s serve: %w", path, err)
-	}
-
-	srv := &localServer{cmd: cmd, logPath: logPath, done: make(chan struct{})}
-	go func() {
-		srv.waitErr = cmd.Wait()
-		close(srv.done)
-	}()
-
-	deadline := time.NewTimer(s.startTimeout())
+// waitReady polls ping until the server answers. It fails with errExited
+// once exited reports true, unless a server answers anyway, and with
+// errNoAnswer after timeout.
+func waitReady(ctx context.Context, ping func(context.Context) error, timeout time.Duration, exited func() bool) error {
+	deadline := time.NewTimer(timeout)
 	defer deadline.Stop()
 	tick := time.NewTicker(pollInterval)
 	defer tick.Stop()
 	for {
 		if ping(ctx) == nil {
-			return srv, nil
+			return nil
+		}
+		if exited() {
+			if ping(ctx) == nil {
+				return nil
+			}
+			return errExited
 		}
 		select {
-		case <-srv.done:
-			if ping(ctx) == nil {
-				return nil, nil
-			}
-			return nil, fmt.Errorf("ollama serve exited (%w) before answering at %s%s", srv.waitErr, host, srv.logTail())
 		case <-ctx.Done():
-			srv.stop()
-			return nil, ctx.Err()
+			return ctx.Err()
 		case <-deadline.C:
-			srv.stop()
-			return nil, fmt.Errorf("ollama serve did not answer at %s within %v%s", host, s.startTimeout(), srv.logTail())
+			return errNoAnswer
 		case <-tick.C:
 		}
 	}
 }
 
-// stop ends the server: SIGTERM to its process group (so model runners it
-// started go too), then a kill if it is still running after stopTimeout.
-func (s *localServer) stop() {
+// proc is a started process.
+type proc struct {
+	cmd *exec.Cmd
+	// done is closed when the process has exited; err is then set.
+	done chan struct{}
+	err  error
+}
+
+func startProc(cmd *exec.Cmd) (*proc, error) {
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	p := &proc{cmd: cmd, done: make(chan struct{})}
+	go func() {
+		p.err = cmd.Wait()
+		close(p.done)
+	}()
+	return p, nil
+}
+
+func (p *proc) exited() bool {
 	select {
-	case <-s.done:
-		return
+	case <-p.done:
+		return true
 	default:
+		return false
 	}
-	terminate(s.cmd)
+}
+
+// stop ends the process and its process group: SIGTERM, then a kill if it
+// is still running after timeout.
+func (p *proc) stop(timeout time.Duration) {
+	if p.exited() {
+		return
+	}
+	terminate(p.cmd)
 	select {
-	case <-s.done:
-	case <-time.After(stopTimeout):
-		kill(s.cmd)
-		<-s.done
+	case <-p.done:
+	case <-time.After(timeout):
+		kill(p.cmd)
+		<-p.done
 	}
+}
+
+// startError explains why a started server did not come up.
+func startError(err error, exitErr error, host *url.URL, s ServeSettings, logPath string) error {
+	switch {
+	case errors.Is(err, errExited) && exitErr != nil:
+		return fmt.Errorf("ollama serve exited (%w) before answering at %s%s", exitErr, host, logTail(logPath))
+	case errors.Is(err, errExited):
+		return fmt.Errorf("ollama serve exited before answering at %s%s", host, logTail(logPath))
+	case errors.Is(err, errNoAnswer):
+		return fmt.Errorf("ollama serve did not answer at %s within %v%s", host, s.startTimeout(), logTail(logPath))
+	}
+	return err
 }
 
 // openServeLog opens the server's log file, truncated, falling back to
@@ -160,13 +186,13 @@ func openServeLog() (string, *os.File) {
 }
 
 // logTail returns the end of the server log for error messages.
-func (s *localServer) logTail() string {
-	if s.logPath == "" {
+func logTail(path string) string {
+	if path == "" {
 		return ""
 	}
-	data, err := os.ReadFile(s.logPath)
+	data, err := os.ReadFile(path)
 	if err != nil {
-		return "; log: " + s.logPath
+		return "; log: " + path
 	}
 	data = bytes.TrimSpace(data)
 	if len(data) > 600 {
@@ -176,7 +202,7 @@ func (s *localServer) logTail() string {
 		}
 	}
 	if len(data) == 0 {
-		return "; log: " + s.logPath
+		return "; log: " + path
 	}
-	return fmt.Sprintf("; log %s ends with:\n%s", s.logPath, data)
+	return fmt.Sprintf("; log %s ends with:\n%s", path, data)
 }

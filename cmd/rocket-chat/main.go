@@ -29,7 +29,7 @@ import (
 	// Backends register themselves in init.
 	_ "github.com/sgstreet/rocket-chat/internal/backend/fake"
 	_ "github.com/sgstreet/rocket-chat/internal/backend/gemini"
-	_ "github.com/sgstreet/rocket-chat/internal/backend/ollama"
+	"github.com/sgstreet/rocket-chat/internal/backend/ollama"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -66,6 +66,8 @@ type env struct {
 }
 
 func main() {
+	// A copy of rocket-chat that keeps a shared Ollama server running.
+	ollama.RunSupervisorIfAsked()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	statePath, _ := store.DefaultStatePath()
 	code := run(ctx, os.Args[1:], env{

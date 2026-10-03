@@ -50,9 +50,10 @@ type Settings struct {
 	// KeepAlive is how long the model stays loaded after a request.
 	KeepAlive *config.Duration `json:"keep_alive"`
 	// UnloadOnExit unloads the models rocket-chat used when it exits, so
-	// a server it did not start frees their memory straight away rather
-	// than after keep_alive. Default true. A server rocket-chat started is
-	// stopped instead.
+	// their memory is freed straight away rather than after keep_alive.
+	// Default true. Models another running copy of rocket-chat has used
+	// stay loaded, and a server rocket-chat started is stopped instead
+	// when no other copy uses it.
 	UnloadOnExit *bool `json:"unload_on_exit"`
 	// Think enables or disables reasoning for models that support it. When
 	// unset, the model's default applies.
@@ -80,8 +81,9 @@ type Backend struct {
 	serveMu sync.Mutex
 	// ready is set once the server has answered.
 	ready bool
-	// server is the server this backend started, stopped by Close.
-	server *localServer
+	// share is this backend's use of a local server, which it may have
+	// started; nil for a remote host.
+	share *share
 	// used holds the models chatted with, which Close unloads.
 	used []string
 }
@@ -104,21 +106,23 @@ func (b *Backend) ensureServer(ctx context.Context) (string, error) {
 	switch {
 	case err == nil:
 		b.ready = true
+		if b.share != nil {
+			b.share.join()
+		}
 		return "", nil
-	case !isUnreachable(err) || !b.settings.Serve.autoStart() || !isLocal(b.host):
+	case !isUnreachable(err) || !b.settings.Serve.autoStart() || b.share == nil:
 		// The request itself reports the problem.
 		return "", nil
 	}
-	srv, err := startServer(ctx, b.settings.Serve, b.host, b.ping)
+	started, err := b.share.start(ctx, b.settings.Serve, b.ping)
 	if err != nil {
 		return "", err
 	}
 	b.ready = true
-	if srv == nil {
+	if !started {
 		return "", nil
 	}
-	b.server = srv
-	return fmt.Sprintf("Started a local Ollama server at %s; it stops when rocket-chat exits.", b.host), nil
+	return fmt.Sprintf("Started a local Ollama server at %s; it stops when the last rocket-chat using it exits.", b.host), nil
 }
 
 // ping checks that the server answers.
@@ -128,25 +132,31 @@ func (b *Backend) ping(ctx context.Context) error {
 	return b.client.Heartbeat(ctx)
 }
 
-// Close stops the local server if this backend started it. A server that
-// was already running is left alone, but the models used are unloaded from
-// it unless unload_on_exit is off.
+// Close stops a local server rocket-chat started once no other copy of
+// rocket-chat uses it. Otherwise the server is left running, and the models
+// this backend used are unloaded from it unless another copy has used them
+// or unload_on_exit is off.
 func (b *Backend) Close() error {
 	b.serveMu.Lock()
 	defer b.serveMu.Unlock()
 	used := b.used
 	b.used = nil
 	b.ready = false
-	if b.server != nil {
-		b.server.stop()
-		b.server = nil
-		return nil
+	var others []string
+	if b.share != nil {
+		var stopped bool
+		if stopped, others = b.share.leave(); stopped {
+			return nil
+		}
 	}
 	if !b.settings.unloadOnExit() {
 		return nil
 	}
 	var errs []error
 	for _, model := range used {
+		if slices.Contains(others, model) {
+			continue
+		}
 		if err := b.unload(model); err != nil {
 			errs = append(errs, fmt.Errorf("unloading %s: %w", model, err))
 		}
@@ -177,6 +187,9 @@ func (b *Backend) markUsed(model string) {
 	if !slices.Contains(b.used, model) {
 		b.used = append(b.used, model)
 	}
+	if b.share != nil {
+		b.share.use(model)
+	}
 }
 
 // New creates a backend. A nil httpClient uses http.DefaultClient.
@@ -196,13 +209,17 @@ func New(s Settings, httpClient *http.Client) (*Backend, error) {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Backend{
+	b := &Backend{
 		client:   api.NewClient(host, httpClient),
 		http:     httpClient,
 		host:     host,
 		settings: s,
 		now:      time.Now,
-	}, nil
+	}
+	if isLocal(host) {
+		b.share = newShare(host)
+	}
+	return b, nil
 }
 
 func (b *Backend) Name() string { return Name }
