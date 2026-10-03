@@ -50,10 +50,9 @@ var builtin = []Role{
 		Name:        "General Assistant",
 		Description: "Helpful, clear answers on any topic",
 		Prompt: "You are a helpful, knowledgeable assistant. Give clear, accurate answers and match their " +
-			"length to the question: short for simple questions, more detail when it is needed. Use " +
-			"Markdown when it helps readability, such as lists, tables and code blocks. If a request is " +
-			"ambiguous, say what you assumed or ask a brief clarifying question. Say so when you are " +
-			"unsure rather than guessing.",
+			"length to the question: short for simple questions, more detail when it is needed. If a " +
+			"request is ambiguous, say what you assumed or ask a brief clarifying question. Say so when " +
+			"you are unsure rather than guessing.",
 	},
 	{
 		ID:          "technical",

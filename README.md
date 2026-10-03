@@ -30,6 +30,10 @@ Run `rocket-chat` with no prompt for the interactive chat:
 
 - Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn or the mouse
   wheel scroll, Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
+- Replies stream in as plain text and are rendered as Markdown (headings, lists, tables, highlighted
+  code) once complete. `/markdown off`, or `"ui": {"markdown": false}`, shows them exactly as the
+  model wrote them. Your own messages and notices are never rendered. Saved chats, `/export` and
+  `/copy` always keep the model's original text.
 - Up and Down (or Ctrl+P and Ctrl+N) recall earlier inputs, messages and commands alike, from this
   and earlier chats. A recalled input can be edited before sending; edits are kept while you move
   through the list, and Down past the newest entry brings back what you were typing. In a
@@ -55,7 +59,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
   goes back to the input. Clicking inside the input puts the cursor there, in multi-line input too.
   Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/role`, `/system`, `/search on|off|default`, `/key`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/system`, `/search on|off|default`, `/key`, `/markdown on|off`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
@@ -76,6 +80,9 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
 - The answer and its sources go to stdout. Search progress goes to stderr when stderr is a
   terminal; `-v` also prints token usage and timing, and `--thinking` prints the model's reasoning.
 - `--search` / `--search=false` overrides the backend's web search default.
+- `--render` prints the answer as rendered Markdown (styles, wrapping to the terminal width, code
+  highlighting, clickable links) once it is complete, instead of streaming the raw text. The style
+  follows `ui.theme`. Piped through `--render`, the output keeps its colour codes (use `less -R`).
 - Exit codes: 0 success, 1 error, 2 usage error, 130 interrupted (Ctrl+C).
 
 ## Saved chats
@@ -213,6 +220,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
 | `ui.mouse` | `true` | Handle the mouse: wheel scrolls, drag copies, click opens links, middle button pastes |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |
+| `ui.markdown` | `true` | Render finished replies as Markdown; `false` shows the model's text as it is (`/markdown` switches it in a chat) |
 | `sessions.save` | `true` | Save interactive chats |
 | `sessions.dir` | `~/.local/share/rocket-chat/sessions` (or `$XDG_DATA_HOME/rocket-chat/sessions`) | Where chats are saved; `~` is expanded |
 

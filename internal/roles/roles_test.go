@@ -29,8 +29,8 @@ func TestBuiltin(t *testing.T) {
 	if r, _ := lib.Find("research"); r.Search == nil || !*r.Search {
 		t.Error("research should turn search on")
 	}
-	if r, _ := lib.Find("general"); r.Search != nil {
-		t.Error("general should leave search to the backend")
+	if r, _ := lib.Find("general"); r.Search != nil || strings.Contains(strings.ToLower(r.Prompt), "markdown") {
+		t.Error("general should leave search and formatting to the backend and the model")
 	}
 }
 

@@ -28,6 +28,11 @@ type oneShot struct {
 	// buffer holds the answer back until the end so inline citation
 	// markers can be inserted; used when stdout is not a terminal.
 	buffer bool
+	// render prints the answer, once complete, as Markdown rendered for a
+	// terminal of the given width and glamour style ("dark" or "light").
+	render bool
+	width  int
+	style  string
 }
 
 func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request) error {
@@ -52,7 +57,14 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 	finish := func() {
 		endErrLine()
 		if buffered.Len() > 0 {
-			writeOut(render.Cite(buffered.String(), grounding))
+			text := render.Cite(buffered.String(), grounding)
+			if o.render {
+				// Rendering failures fall back to the raw text.
+				if styled, err := render.Terminal(text, o.width, o.style); err == nil {
+					text = styled + "\n"
+				}
+			}
+			writeOut(text)
 		}
 		if !outLineEnd {
 			writeOut("\n")
@@ -69,7 +81,7 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 			endErrLine()
 			switch {
 			case ev.Text == "":
-			case o.buffer:
+			case o.buffer || o.render:
 				buffered.WriteString(ev.Text)
 			default:
 				writeOut(ev.Text)
