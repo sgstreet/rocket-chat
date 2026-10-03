@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"errors"
+	"slices"
 	"strings"
 	"testing"
 
@@ -204,5 +206,33 @@ func TestRoleCompletion(t *testing.T) {
 	h.send(press("tab"))
 	if h.m.input.Value() != "/sys" {
 		t.Error("/system is still offered")
+	}
+}
+
+func TestRoleRemembered(t *testing.T) {
+	type call struct{ id, prompt string }
+	var calls []call
+	fail := false
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", RememberRole: func(id, prompt string) error {
+		calls = append(calls, call{id, prompt})
+		if fail {
+			return errors.New("disk full")
+		}
+		return nil
+	}})
+	tech, _ := roles.Builtin().Find("technical")
+	h.typeAndSend("/role technical")
+	h.typeAndSend("/role custom Be brief.")
+	h.typeAndSend("/role off")
+	h.typeAndSend("/role")      // only shows
+	h.typeAndSend("/role show") // only shows
+	want := []call{{"technical", tech.Prompt}, {"", "Be brief."}, {"", ""}}
+	if !slices.Equal(calls, want) {
+		t.Errorf("remembered %+v, want %+v", calls, want)
+	}
+	fail = true
+	h.typeAndSend("/role general")
+	if !strings.Contains(h.last(entryError).text, "will not be remembered: disk full") || h.m.role != "general" {
+		t.Error("save error not shown, or the role not applied")
 	}
 }

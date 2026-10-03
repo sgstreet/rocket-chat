@@ -61,6 +61,10 @@ type Options struct {
 	// PlainReplies shows replies as the model wrote them instead of
 	// rendering them as Markdown.
 	PlainReplies bool
+	// RememberRole saves a role chosen with /role for the next run: id for
+	// a named role, otherwise a custom prompt, or neither for none. Nil
+	// remembers nothing.
+	RememberRole func(id, prompt string) error
 }
 
 // Keys reads and saves backends' API keys.
