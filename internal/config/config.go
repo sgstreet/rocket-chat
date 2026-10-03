@@ -26,7 +26,21 @@ type Config struct {
 	DefaultBackend string `yaml:"default_backend"`
 	// Backends holds each backend's own section, decoded by the backend.
 	Backends map[string]yaml.Node `yaml:"backends"`
+	// Sessions controls saving interactive chats.
+	Sessions Sessions `yaml:"sessions"`
 }
+
+// Sessions is the sessions config section.
+type Sessions struct {
+	// Save turns saving interactive chats on or off (default on).
+	Save *bool `yaml:"save"`
+	// Dir is where sessions are saved (default
+	// $XDG_DATA_HOME/rocket-chat/sessions).
+	Dir string `yaml:"dir"`
+}
+
+// SaveEnabled reports whether interactive chats are saved.
+func (s Sessions) SaveEnabled() bool { return s.Save == nil || *s.Save }
 
 // Default returns the configuration used when no file exists.
 func Default() Config {

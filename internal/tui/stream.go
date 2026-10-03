@@ -28,8 +28,6 @@ type entry struct {
 	msg chat.Message
 	// text is the message for notices and errors.
 	text string
-	// model is the model that answered, when known.
-	model string
 	// activity lists searches and page fetches while answering.
 	activity []string
 	usage    *backend.Usage
@@ -63,7 +61,7 @@ func (m *model) ask() tea.Cmd {
 		Search:   m.search,
 		Messages: chat.ForBackend(m.history(), m.backendName),
 	}
-	reply := &entry{kind: entryAssistant, msg: chat.Message{Role: chat.RoleAssistant, Backend: m.backendName}, model: m.effectiveModel()}
+	reply := &entry{kind: entryAssistant, msg: chat.Message{Role: chat.RoleAssistant, Backend: m.backendName, Model: m.effectiveModel()}}
 	m.entries = append(m.entries, reply)
 
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -174,6 +172,7 @@ func (m *model) finish(e *entry) {
 		m.cancel()
 		m.cancel = nil
 	}
+	m.save()
 	m.refresh()
 }
 

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"runtime/debug"
 	"strings"
 	"syscall"
@@ -17,6 +18,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
+	"github.com/sgstreet/rocket-chat/internal/store"
 	"github.com/sgstreet/rocket-chat/internal/tui"
 
 	// Backends register themselves in init.
@@ -63,7 +65,7 @@ func main() {
 
 type options struct {
 	backend, model, prompt, system string
-	configPath                     string
+	configPath, resume             string
 	search, thinking, verbose      bool
 	showVersion, listBackends      bool
 	listModels                     bool
@@ -100,6 +102,7 @@ Flags:
 	}
 	fs.BoolVar(&o.search, "search", false, "enable or disable web search, e.g. --search=false (default from backend config)")
 	fs.BoolVar(&o.thinking, "thinking", false, "show the model's reasoning on stderr")
+	fs.StringVar(&o.resume, "resume", "", `continue a saved chat: "last" or a session ID`)
 	fs.StringVar(&o.configPath, "config", "", "config file (default $"+config.EnvConfigPath+" or the user config directory)")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&o.listBackends, "list-backends", false, "print the available backends and exit")
@@ -139,19 +142,28 @@ Flags:
 		search = &o.search
 	}
 
-	if o.prompt == "" && len(fs.Args()) == 0 && !e.stdinIsInput && !o.listModels {
+	interactive := o.prompt == "" && len(fs.Args()) == 0 && !e.stdinIsInput && !o.listModels
+	if o.resume != "" && !interactive {
+		fmt.Fprintln(e.stderr, "rocket-chat: --resume continues a chat interactively; it cannot be combined with a prompt")
+		return exitUsage
+	}
+	if interactive {
 		if !e.stdoutIsTerminal {
 			fmt.Fprintln(e.stderr, "rocket-chat: no prompt given, and interactive chat needs a terminal (see -h)")
 			return exitUsage
 		}
-		err := tui.Run(ctx, tui.Options{
+		opts := tui.Options{
 			Backend:  name,
 			Model:    o.model,
 			System:   o.system,
 			Search:   search,
 			Open:     open,
 			Backends: backend.Names(),
-		})
+		}
+		if err := sessionOptions(cfg.Sessions, o, &opts); err != nil {
+			return fail(e, err)
+		}
+		err := tui.Run(ctx, opts)
 		switch {
 		case ctx.Err() != nil:
 			return exitInterrupted
@@ -223,6 +235,66 @@ func listModels(ctx context.Context, b backend.Backend, e env) int {
 func fail(e env, err error) int {
 	fmt.Fprintln(e.stderr, "rocket-chat:", err)
 	return exitError
+}
+
+// sessionOptions opens the session store and loads the chat to resume. A
+// resumed chat keeps its backend, model and system prompt unless flags
+// override them.
+func sessionOptions(cfg config.Sessions, o options, opts *tui.Options) error {
+	if !cfg.SaveEnabled() {
+		if o.resume != "" {
+			return errors.New("--resume needs saved sessions, which are turned off (sessions.save)")
+		}
+		return nil
+	}
+	dir, err := expandHome(cfg.Dir)
+	if err != nil {
+		return err
+	}
+	if dir == "" {
+		if dir, err = store.DefaultDir(); err != nil {
+			return err
+		}
+	}
+	st, err := store.Open(dir)
+	if err != nil {
+		return fmt.Errorf("session store: %w", err)
+	}
+	opts.Store = st
+	if o.resume == "" {
+		return nil
+	}
+	sess, err := st.Load(o.resume)
+	if err != nil {
+		return err
+	}
+	if o.backend == "" && sess.Backend != "" {
+		opts.Backend = sess.Backend
+	}
+	if o.model != "" {
+		sess.Model = o.model
+	}
+	if o.system != "" {
+		sess.System = o.system
+	}
+	opts.Resume = sess
+	return nil
+}
+
+// expandHome replaces a leading "~/" with the home directory.
+func expandHome(path string) (string, error) {
+	rest, ok := strings.CutPrefix(path, "~/")
+	if path == "~" {
+		rest, ok = "", true
+	}
+	if !ok {
+		return path, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, rest), nil
 }
 
 // loadConfig reads the config file. A file named with --config must exist;

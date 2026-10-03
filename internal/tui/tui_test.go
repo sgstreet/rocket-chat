@@ -26,23 +26,26 @@ type harness struct {
 
 func newHarness(t *testing.T, backends map[string]*fake.Backend, start string) *harness {
 	t.Helper()
+	return newHarnessWith(t, backends, Options{Backend: start})
+}
+
+func newHarnessWith(t *testing.T, backends map[string]*fake.Backend, opts Options) *harness {
+	t.Helper()
 	h := &harness{t: t, backends: backends}
 	names := make([]string, 0, len(backends))
 	for n := range backends {
 		names = append(names, n)
 	}
 	slices.Sort(names)
-	m, err := newModel(t.Context(), Options{
-		Backend:  start,
-		Backends: names,
-		Open: func(name string) (backend.Backend, error) {
-			b, ok := backends[name]
-			if !ok {
-				return nil, fmt.Errorf("unknown backend %q", name)
-			}
-			return b, nil
-		},
-	})
+	opts.Backends = names
+	opts.Open = func(name string) (backend.Backend, error) {
+		b, ok := backends[name]
+		if !ok {
+			return nil, fmt.Errorf("unknown backend %q", name)
+		}
+		return b, nil
+	}
+	m, err := newModel(t.Context(), opts)
 	if err != nil {
 		t.Fatal(err)
 	}
