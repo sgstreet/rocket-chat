@@ -69,7 +69,7 @@ func (m *model) handleMouse(msg tea.Msg) tea.Cmd {
 			// a drag, or a click that is not on a link.
 			p := m.contentPos(msg.X, msg.Y)
 			m.sel = &selection{anchor: p, head: p, dragging: true}
-		case m.keyFor == "" && msg.Y >= m.inputTop() && msg.Y < m.inputTop()+inputHeight:
+		case m.keyFor == "" && msg.Y >= m.inputTop() && msg.Y < m.inputTop()+m.inputHeight():
 			cmd := m.setFocus(focusInput)
 			m.placeCursor(msg.Y-m.inputTop(), msg.X)
 			return cmd

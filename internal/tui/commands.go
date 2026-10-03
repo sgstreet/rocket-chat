@@ -22,6 +22,7 @@ const helpText = `Commands:
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
   /markdown on|off       render replies as Markdown, or show the model's text as it is
+  /lines [n]             show or set how many lines the input box shows (1-20)
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -93,6 +94,8 @@ func (m *model) command(line string) tea.Cmd {
 		return m.keyCommand(arg)
 	case "markdown":
 		m.setMarkdown(arg)
+	case "lines":
+		m.setLines(arg)
 	case "retry":
 		return m.retry()
 	default:
@@ -311,6 +314,32 @@ func (m *model) showRole(name string) {
 	}
 	b.WriteString("\n\n" + r.Prompt)
 	m.notice("%s", b.String())
+}
+
+func (m *model) setLines(arg string) {
+	if arg == "" {
+		m.notice("The input box shows %s. Change it with /lines <n> (1-%d), or ui.input_lines in the config.", lines(m.inputLines), MaxInputLines)
+		return
+	}
+	n, err := strconv.Atoi(arg)
+	if err != nil || n < 1 || n > MaxInputLines {
+		m.errorf("Use /lines <n> with n from 1 to %d.", MaxInputLines)
+		return
+	}
+	m.inputLines = n
+	m.layout()
+	msg := fmt.Sprintf("The input box shows %s.", lines(n))
+	if h := m.inputHeight(); h < n {
+		msg += fmt.Sprintf(" The window has room for %s; it grows when the window does.", lines(h))
+	}
+	m.notice("%s", msg)
+}
+
+func lines(n int) string {
+	if n == 1 {
+		return "1 line"
+	}
+	return fmt.Sprintf("%d lines", n)
 }
 
 func (m *model) setMarkdown(arg string) {

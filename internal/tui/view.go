@@ -204,6 +204,11 @@ func (m *model) statusLine() string {
 	return st.status.Width(m.width).MaxWidth(m.width).Render(line)
 }
 
+// separator is the rule between the conversation and the composer.
+func (m *model) separator() string {
+	return st.dim.Render(strings.Repeat("─", max(0, m.width)))
+}
+
 func (m *model) helpLine() string {
 	var help string
 	switch {

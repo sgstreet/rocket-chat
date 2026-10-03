@@ -284,6 +284,9 @@ Flags:
 		}
 		opts.Mouse = cfg.UI.MouseEnabled()
 		opts.PlainReplies = !cfg.UI.MarkdownEnabled()
+		if opts.InputLines, err = cfg.UI.InputLinesValue(); err != nil {
+			return fail(e, err)
+		}
 		if cfg.UI.HistoryEnabled() {
 			// Without a history file the chat still has this run's inputs.
 			if path, err := store.DefaultHistoryPath(); err == nil {

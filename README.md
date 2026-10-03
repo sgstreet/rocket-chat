@@ -26,7 +26,10 @@ make lint         # go vet + golangci-lint
 
 ## Usage
 
-Run `rocket-chat` with no prompt for the interactive chat:
+Run `rocket-chat` with no prompt for the interactive chat. The screen has the conversation at the
+top and, below a rule, the composer: a status bar (backend, model, web search, role), the input box,
+and a hint line with the main keys. `/lines <n>` sets how many lines the input box shows (1–20,
+default 3; `ui.input_lines` in the config makes it stick).
 
 - Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn or the mouse
   wheel scroll, Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
@@ -59,7 +62,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
   goes back to the input. Clicking inside the input puts the cursor there, in multi-line input too.
   Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
@@ -288,6 +291,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
 | `ui.mouse` | `true` | Handle the mouse: wheel scrolls, drag copies, click opens links, middle button pastes |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |
+| `ui.input_lines` | `3` | How many lines the input box shows, 1–20 (`/lines <n>` changes it in a chat) |
 | `ui.markdown` | `true` | Render finished replies as Markdown; `false` shows the model's text as it is (`/markdown` switches it in a chat) |
 | `sessions.save` | `true` | Save interactive chats |
 | `sessions.dir` | `~/.local/share/rocket-chat/sessions` (or `$XDG_DATA_HOME/rocket-chat/sessions`) | Where chats are saved; `~` is expanded |

@@ -189,3 +189,12 @@ func TestThemeName(t *testing.T) {
 		t.Error("bad theme accepted")
 	}
 }
+
+func TestInputLines(t *testing.T) {
+	for n, ok := range map[int]bool{0: true, 1: true, 3: true, 20: true, 21: false, -1: false} {
+		got, err := UI{InputLines: n}.InputLinesValue()
+		if ok != (err == nil) || (ok && got != n) {
+			t.Errorf("input_lines %d: %d, %v", n, got, err)
+		}
+	}
+}
