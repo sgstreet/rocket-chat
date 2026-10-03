@@ -14,6 +14,9 @@ import (
 type Backend interface {
 	Name() string
 	Capabilities() Capabilities
+	// Models lists the models the backend can use. When only part of the
+	// list could be fetched, it returns that part with a *PartialList
+	// error.
 	Models(ctx context.Context) ([]ModelInfo, error)
 	// Chat streams the reply to req. The sequence ends after an EventDone
 	// event, or after yielding a non-nil error. Cancelling ctx stops the
@@ -39,6 +42,15 @@ type Capabilities struct {
 	// and must be shown.
 	SearchSuggestions bool
 }
+
+// PartialList is the error Models returns, along with the models it did
+// list, when some could not be listed.
+type PartialList struct {
+	Err error
+}
+
+func (e *PartialList) Error() string { return e.Err.Error() }
+func (e *PartialList) Unwrap() error { return e.Err }
 
 // ModelInfo describes a model a backend can use.
 type ModelInfo struct {

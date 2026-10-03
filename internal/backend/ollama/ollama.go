@@ -65,6 +65,9 @@ type Settings struct {
 	Search SearchSettings `json:"search"`
 	// Serve configures starting a local server when none is running.
 	Serve ServeSettings `json:"serve"`
+	// CloudModels adds the ollama.com cloud models to the model list.
+	// Default true. Using one needs `ollama signin` on the server.
+	CloudModels *bool `json:"cloud_models"`
 }
 
 // Backend talks to an Ollama server.
@@ -86,6 +89,12 @@ type Backend struct {
 	share *share
 	// used holds the models chatted with, which Close unloads.
 	used []string
+
+	// cloudURL lists the cloud models; "" leaves them out.
+	cloudURL string
+	// cloudMu guards cloudCatalog, the cloud models once fetched.
+	cloudMu      sync.Mutex
+	cloudCatalog []string
 }
 
 func (s Settings) unloadOnExit() bool { return s.UnloadOnExit == nil || *s.UnloadOnExit }
@@ -154,7 +163,7 @@ func (b *Backend) Close() error {
 	}
 	var errs []error
 	for _, model := range used {
-		if slices.Contains(others, model) {
+		if slices.Contains(others, model) || isCloudModel(model) {
 			continue
 		}
 		if err := b.unload(model); err != nil {
@@ -215,6 +224,7 @@ func New(s Settings, httpClient *http.Client) (*Backend, error) {
 		host:     host,
 		settings: s,
 		now:      time.Now,
+		cloudURL: defaultCloudURL,
 	}
 	if isLocal(host) {
 		b.share = newShare(host)
@@ -249,13 +259,17 @@ func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {
 				desc = append(desc, s)
 			}
 		}
-		models = append(models, backend.ModelInfo{
+		info := backend.ModelInfo{
 			Name:          m.Name,
 			Description:   strings.Join(desc, " "),
 			ContextLength: m.Details.ContextLength,
-		})
+		}
+		if m.RemoteHost != "" || isCloudModel(m.Name) {
+			info.Description = cloudDescription
+		}
+		models = append(models, info)
 	}
-	return models, nil
+	return b.withCloudModels(ctx, models)
 }
 
 // errStopped ends a streaming callback when the consumer stops iterating.
@@ -505,6 +519,23 @@ func (b *Backend) explain(ctx context.Context, err error, model string) error {
 		return ctx.Err()
 	}
 	var status api.StatusError
+	if auth, ok := errors.AsType[api.AuthorizationError](err); ok && isCloudModel(model) {
+		hint := "run `ollama signin`"
+		if auth.SigninURL != "" {
+			hint += " or sign in at " + auth.SigninURL
+		}
+		return fmt.Errorf("cloud model %q needs the Ollama server signed in to ollama.com: %s (%w)", model, hint, err)
+	}
+	if errors.As(err, &status) && isCloudModel(model) {
+		switch status.StatusCode {
+		case http.StatusUnauthorized, http.StatusForbidden:
+			return fmt.Errorf("cloud model %q needs the Ollama server signed in to ollama.com: run `ollama signin` (%w)", model, err)
+		case http.StatusNotFound:
+			return fmt.Errorf("cloud model %q not found on %s; check the name with /model, "+
+				"or, if this Ollama is too old to run cloud models without pulling them, "+
+				"update it or run `ollama pull %s` (%w)", model, b.host, model, err)
+		}
+	}
 	if errors.As(err, &status) && status.StatusCode == http.StatusNotFound && model != "" {
 		return fmt.Errorf("model %q not found on %s; download it with `ollama pull %s`", model, b.host, model)
 	}
@@ -525,7 +556,7 @@ func (b *Backend) explain(ctx context.Context, err error, model string) error {
 
 func (b *Backend) noModelError(ctx context.Context) error {
 	models, err := b.Models(ctx)
-	if err != nil {
+	if _, partial := errors.AsType[*backend.PartialList](err); err != nil && !partial {
 		return err
 	}
 	if len(models) == 0 {

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"strconv"
@@ -170,8 +171,13 @@ func (m *model) showModels(msg modelsMsg) {
 	if msg.backend != m.backendName {
 		return
 	}
-	if msg.err != nil {
+	partial, isPartial := errors.AsType[*backend.PartialList](msg.err)
+	if msg.err != nil && !isPartial {
 		m.errorf("Cannot list models: %v", msg.err)
+		return
+	}
+	if len(msg.models) == 0 && isPartial {
+		m.errorf("%s has no models available; %v", msg.backend, partial)
 		return
 	}
 	if len(msg.models) == 0 {
@@ -190,6 +196,9 @@ func (m *model) showModels(msg modelsMsg) {
 		if md.Description != "" {
 			b.WriteString("  " + md.Description)
 		}
+	}
+	if isPartial {
+		fmt.Fprintf(&b, "\n(%v)", partial)
 	}
 	m.notice("%s", b.String())
 }

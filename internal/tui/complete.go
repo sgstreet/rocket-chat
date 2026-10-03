@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"errors"
 	"slices"
 	"strings"
 
@@ -109,7 +110,7 @@ func (m *model) modelsForCompletion(msg modelsMsg) tea.Cmd {
 	if msg.backend != m.backendName {
 		return nil
 	}
-	if msg.err != nil {
+	if _, partial := errors.AsType[*backend.PartialList](msg.err); msg.err != nil && !partial {
 		if waiting != "" && m.input.Value() == waiting {
 			m.complHint = "cannot list models: " + msg.err.Error()
 		}

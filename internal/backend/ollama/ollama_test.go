@@ -91,9 +91,14 @@ func (fs *fakeServer) chat(w http.ResponseWriter, r *http.Request) {
 	fs.requests = append(fs.requests, req)
 	fs.mu.Unlock()
 
-	if req.Model == "missing" {
+	switch req.Model {
+	case "missing", "gone:cloud":
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":"model 'missing' not found"}`))
+		_, _ = w.Write([]byte(`{"error":"model '` + req.Model + `' not found"}`))
+		return
+	case "denied:cloud":
+		w.WriteHeader(http.StatusUnauthorized)
+		_, _ = w.Write([]byte(`{"error":"unauthorized"}`))
 		return
 	}
 	chunks := fs.chunks
@@ -176,6 +181,7 @@ func newBackend(t *testing.T, s Settings) *Backend {
 	if err != nil {
 		t.Fatal(err)
 	}
+	b.cloudURL = "" // tests that list cloud models set their own
 	return b
 }
 
