@@ -19,6 +19,20 @@ make lint         # go vet + golangci-lint
 ./bin/rocket-chat --list-backends
 ```
 
+## Usage
+
+```sh
+rocket-chat -b gemini "who won the last world cup?"
+cat notes.txt | rocket-chat -p "summarize this"
+git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
+```
+
+- The answer and its sources go to stdout. Search progress goes to stderr when stderr is a
+  terminal; `-v` also prints token usage and timing, and `--thinking` prints the model's reasoning.
+- `--search` / `--search=false` overrides the backend's web search default.
+- Exit codes: 0 success, 1 error, 2 usage error, 130 interrupted (Ctrl+C).
+- Interactive mode is not implemented yet.
+
 ## Configuration
 
 The config file is `$ROCKET_CHAT_CONFIG`, or `rocket-chat/config.yaml` under the user config
