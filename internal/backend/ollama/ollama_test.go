@@ -21,8 +21,17 @@ import (
 type fakeServer struct {
 	*httptest.Server
 	chunks []api.ChatResponse
+	// rounds, when set, scripts successive /api/chat calls; the last entry
+	// repeats.
+	rounds [][]api.ChatResponse
 	delay  time.Duration
 	models []api.ListModelResponse
+	// capabilities maps a model to what /api/show reports. Models not
+	// listed report completion and tools.
+	capabilities map[string][]string
+	// searchStatus, when non-zero, is returned by the web search routes.
+	searchStatus int
+	searchHits   int
 
 	mu       sync.Mutex
 	requests []api.ChatRequest
@@ -36,6 +45,9 @@ func newFakeServer(t *testing.T, chunks ...api.ChatResponse) *fakeServer {
 	mux.HandleFunc("GET /api/tags", func(w http.ResponseWriter, _ *http.Request) {
 		_ = json.NewEncoder(w).Encode(api.ListResponse{Models: fs.models})
 	})
+	mux.HandleFunc("POST /api/show", fs.show)
+	mux.HandleFunc("POST /api/experimental/web_search", fs.webSearch)
+	mux.HandleFunc("POST /api/experimental/web_fetch", fs.webFetch)
 	fs.Server = httptest.NewServer(mux)
 	t.Cleanup(fs.Close)
 	return fs
@@ -56,9 +68,16 @@ func (fs *fakeServer) chat(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"error":"model 'missing' not found"}`))
 		return
 	}
+	chunks := fs.chunks
+	if fs.rounds != nil {
+		fs.mu.Lock()
+		i := min(len(fs.requests), len(fs.rounds)) - 1
+		fs.mu.Unlock()
+		chunks = fs.rounds[i]
+	}
 	w.Header().Set("Content-Type", "application/x-ndjson")
 	enc := json.NewEncoder(w)
-	for _, c := range fs.chunks {
+	for _, c := range chunks {
 		select {
 		case <-r.Context().Done():
 			return
@@ -67,6 +86,50 @@ func (fs *fakeServer) chat(w http.ResponseWriter, r *http.Request) {
 		_ = enc.Encode(c)
 		w.(http.Flusher).Flush()
 	}
+}
+
+func (fs *fakeServer) show(w http.ResponseWriter, r *http.Request) {
+	var req api.ShowRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	caps, ok := fs.capabilities[req.Model]
+	if !ok {
+		caps = []string{"completion", "tools"}
+	}
+	resp := map[string]any{"capabilities": caps}
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
+func (fs *fakeServer) webSearch(w http.ResponseWriter, r *http.Request) {
+	fs.mu.Lock()
+	fs.searchHits++
+	fs.mu.Unlock()
+	if fs.searchStatus != 0 {
+		w.WriteHeader(fs.searchStatus)
+		_, _ = w.Write([]byte(`{"error":"search failed"}`))
+		return
+	}
+	var req api.WebSearchRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewEncoder(w).Encode(searchResults(req.Query))
+}
+
+func (fs *fakeServer) webFetch(w http.ResponseWriter, r *http.Request) {
+	var req api.WebFetchRequest
+	_ = json.NewDecoder(r.Body).Decode(&req)
+	_ = json.NewEncoder(w).Encode(api.WebFetchResponse{Title: "Fetched " + req.URL, Content: "Full page text."})
+}
+
+func searchResults(query string) api.WebSearchResponse {
+	return api.WebSearchResponse{Results: []api.WebSearchResult{
+		{Title: "First for " + query, URL: "https://one.example", Content: "one"},
+		{Title: "Second for " + query, URL: "https://two.example", Content: "two"},
+	}}
+}
+
+func (fs *fakeServer) chatRequests() []api.ChatRequest {
+	fs.mu.Lock()
+	defer fs.mu.Unlock()
+	return append([]api.ChatRequest(nil), fs.requests...)
 }
 
 func (fs *fakeServer) lastRequest(t *testing.T) api.ChatRequest {

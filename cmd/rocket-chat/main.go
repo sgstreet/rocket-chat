@@ -36,9 +36,11 @@ const (
 
 // env is the process environment run works against, so tests can replace it.
 type env struct {
-	stdin            io.Reader
-	stdout, stderr   io.Writer
-	stdinIsTerminal  bool
+	stdin          io.Reader
+	stdout, stderr io.Writer
+	// stdinIsInput reports whether stdin is a pipe or file to read the
+	// prompt from.
+	stdinIsInput     bool
 	stderrIsTerminal bool
 }
 
@@ -48,7 +50,7 @@ func main() {
 		stdin:            os.Stdin,
 		stdout:           os.Stdout,
 		stderr:           os.Stderr,
-		stdinIsTerminal:  isTerminal(os.Stdin),
+		stdinIsInput:     isInput(os.Stdin),
 		stderrIsTerminal: isTerminal(os.Stderr),
 	})
 	stop()
@@ -134,8 +136,12 @@ Flags:
 		return listModels(ctx, b, e)
 	}
 
-	text, err := buildPrompt(o.prompt, fs.Args(), e)
-	if err != nil {
+	text, err := buildPrompt(ctx, o.prompt, fs.Args(), e)
+	switch {
+	case ctx.Err() != nil:
+		fmt.Fprintln(e.stderr, "rocket-chat: interrupted")
+		return exitInterrupted
+	case err != nil:
 		fmt.Fprintln(e.stderr, "rocket-chat:", err)
 		return exitUsage
 	}
@@ -187,8 +193,14 @@ func fail(e env, err error) int {
 	return exitError
 }
 
+// loadConfig reads the config file. A file named with --config must exist;
+// the default location may be absent.
 func loadConfig(path string) (config.Config, error) {
-	if path == "" {
+	if path != "" {
+		if _, err := os.Stat(path); err != nil {
+			return config.Config{}, err
+		}
+	} else {
 		var err error
 		if path, err = config.Path(); err != nil {
 			return config.Config{}, err
@@ -198,8 +210,9 @@ func loadConfig(path string) (config.Config, error) {
 }
 
 // buildPrompt combines the -p prompt or the positional arguments with piped
-// stdin.
-func buildPrompt(prompt string, args []string, e env) (string, error) {
+// stdin. Reading stdin stops when ctx is cancelled, so a pipe that never
+// closes cannot hang the command.
+func buildPrompt(ctx context.Context, prompt string, args []string, e env) (string, error) {
 	if prompt != "" && len(args) > 0 {
 		return "", errors.New("give the prompt either with -p or as arguments, not both")
 	}
@@ -207,10 +220,10 @@ func buildPrompt(prompt string, args []string, e env) (string, error) {
 	if text == "" {
 		text = strings.Join(args, " ")
 	}
-	if !e.stdinIsTerminal && e.stdin != nil {
-		data, err := io.ReadAll(e.stdin)
+	if e.stdinIsInput && e.stdin != nil {
+		data, err := readAll(ctx, e.stdin)
 		if err != nil {
-			return "", fmt.Errorf("reading stdin: %w", err)
+			return "", err
 		}
 		if input := strings.TrimRight(string(data), "\n"); strings.TrimSpace(input) != "" {
 			if text == "" {
@@ -224,6 +237,37 @@ func buildPrompt(prompt string, args []string, e env) (string, error) {
 		return "", errors.New("no prompt given (interactive mode is not implemented yet; see -h)")
 	}
 	return text, nil
+}
+
+func readAll(ctx context.Context, r io.Reader) ([]byte, error) {
+	type result struct {
+		data []byte
+		err  error
+	}
+	done := make(chan result, 1)
+	go func() {
+		data, err := io.ReadAll(r)
+		done <- result{data, err}
+	}()
+	select {
+	case res := <-done:
+		if res.err != nil {
+			return nil, fmt.Errorf("reading stdin: %w", res.err)
+		}
+		return res.data, nil
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	}
+}
+
+// isInput reports whether f is a pipe or regular file. Terminals, /dev/null
+// and sockets are not read as prompt input.
+func isInput(f *os.File) bool {
+	fi, err := f.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeNamedPipe != 0 || fi.Mode().IsRegular()
 }
 
 func isTerminal(f *os.File) bool {

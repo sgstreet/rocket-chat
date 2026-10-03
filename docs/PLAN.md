@@ -39,10 +39,13 @@ backends are **Ollama** (local models, optional Ollama web search) and
   - Tool loop: chat → tool calls → run them → append `tool` messages → repeat, at most N rounds.
   - Only offered when the model reports the `tools` capability.
   - Raise `num_ctx` (default 32k) while search is on; truncate `web_fetch` content.
-  - Results numbered [1], [2], … per turn; system prompt asks the model to cite `[n]`.
-    Sources list built from what we actually gave the model, split into cited / consulted.
+  - Results numbered [1], [2], … per reply. The citation instruction is appended to tool results, not
+    the system prompt: in the system prompt it led small models to answer with made-up `[1]` markers
+    instead of searching. Sources list built from what we actually gave the model, split into
+    cited / consulted.
   - Search queries leave the machine, so search is off by default and the status bar shows it.
-  - Option to drop old tool results from the context after N turns.
+  - Tool calls and results stay inside one reply; only the answer and its sources are kept in history,
+    so old results never fill the context.
 
 ### Gemini backend
 - `genai.BackendGeminiAPI` with `GEMINI_API_KEY`; models listed from the API, default model from config.
