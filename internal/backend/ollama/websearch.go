@@ -46,6 +46,9 @@ type SearchSettings struct {
 	// MaxRounds limits how many times the model may call tools in one
 	// reply (default 5).
 	MaxRounds int `yaml:"max_rounds"`
+	// MaxResultChars truncates each search result (default 2000). The API
+	// returns whole pages; the model can web_fetch one to read more.
+	MaxResultChars int `yaml:"max_result_chars"`
 	// MaxFetchChars truncates fetched pages (default 8000).
 	MaxFetchChars int `yaml:"max_fetch_chars"`
 	// NumCtx is the minimum context window while searching (default 32768);
@@ -66,6 +69,9 @@ func (s SearchSettings) withDefaults() SearchSettings {
 	s.MaxResults = min(s.MaxResults, 10)
 	if s.MaxRounds <= 0 {
 		s.MaxRounds = 5
+	}
+	if s.MaxResultChars <= 0 {
+		s.MaxResultChars = 2000
 	}
 	if s.MaxFetchChars <= 0 {
 		s.MaxFetchChars = 8000

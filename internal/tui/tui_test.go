@@ -170,8 +170,9 @@ func TestGroundedReplyRendering(t *testing.T) {
 		"Euro 2024",
 		"[1]",
 		"Sources:",
-		"https://uefa.example/final",
+		"[1] uefa.com ↗",
 		"Google Search suggestions:",
+		"euro 2024 winner ↗",
 		"1 searches",
 	} {
 		if !strings.Contains(v, want) {
@@ -180,6 +181,13 @@ func TestGroundedReplyRendering(t *testing.T) {
 	}
 	if strings.Contains(v, "**Euro") {
 		t.Error("markdown not rendered")
+	}
+	// Links are OSC 8 hyperlinks rather than printed URLs.
+	raw := h.m.View().Content
+	for _, link := range []string{"https://uefa.example/final", "https://www.google.com/search?q=euro+2024+winner"} {
+		if !strings.Contains(raw, "\x1b]8;;"+link) {
+			t.Errorf("no hyperlink to %s", link)
+		}
 	}
 
 	h.send(tea.KeyPressMsg{Code: 't', Mod: tea.ModCtrl})

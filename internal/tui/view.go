@@ -131,7 +131,7 @@ func (m *model) renderReply(e *entry, width int) string {
 		b.WriteString("\n" + st.dim.Render(m.spinner.View()+" waiting for the model…"))
 	}
 
-	if s := strings.TrimRight(render.Sources(e.msg.Grounding), "\n"); s != "" && e.done {
+	if s := strings.TrimRight(render.SourcesLinked(e.msg.Grounding, hyperlink), "\n"); s != "" && e.done {
 		b.WriteString("\n\n" + st.dim.Render(s))
 	}
 
@@ -147,6 +147,12 @@ func (m *model) renderReply(e *entry, width int) string {
 		}
 	}
 	return b.String()
+}
+
+// hyperlink shows text as a clickable terminal link (OSC 8). Grounding URLs
+// are often wider than the window, where the transcript would cut them.
+func hyperlink(text, url string) string {
+	return lipgloss.NewStyle().Hyperlink(url).Render(text + " ↗")
 }
 
 func replyStats(e *entry) string {

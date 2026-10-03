@@ -84,6 +84,7 @@ backends:
       mode: auto                   # auto | direct | local (see below)
       max_results: 5               # results per search, 1-10
       max_rounds: 5                # tool-call rounds before the model must answer
+      max_result_chars: 2000       # each search result is cut to this; the model can web_fetch the page
       max_fetch_chars: 8000        # fetched pages are truncated to this
       num_ctx: 32768               # minimum context window while searching
 ```
@@ -119,7 +120,9 @@ backends:
 Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) to a key from https://aistudio.google.com/apikey.
 `rocket-chat -b gemini --list-models` lists the models your key can use.
 
-Grounded answers list their sources, the searches Gemini ran, and Google's search suggestions, which
+Gemini decides for itself when a question needs a search; answers it gives without one have no
+sources. Grounded answers list their sources, the searches Gemini ran, and Google's search suggestions, which
 Google's terms require to be shown with grounded results. When stdout is not a terminal, the answer is
 printed once complete with `[n]` citation markers after each supported passage; on a terminal it
-streams as it is generated and the sources follow.
+streams as it is generated and the sources follow. In the interactive chat, source titles and
+suggestions are clickable links (OSC 8), because Gemini's source URLs are long redirect links.

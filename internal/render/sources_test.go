@@ -64,3 +64,21 @@ Also consulted:
 		})
 	}
 }
+
+func TestSourcesLinked(t *testing.T) {
+	g := &chat.Grounding{
+		Sources:     []chat.Source{{Title: "uefa.com", URL: "https://r/1", Cited: true}, {URL: "https://r/2"}},
+		Suggestions: &chat.Suggestions{Links: []chat.Link{{Text: "euro 2024", URL: "https://g/s"}}},
+	}
+	link := func(text, url string) string { return "<" + text + "|" + url + ">" }
+	want := `Sources:
+  [1] <uefa.com|https://r/1>
+Also consulted:
+  [2] <https://r/2|https://r/2>
+Google Search suggestions:
+  <euro 2024|https://g/s>
+`
+	if got := SourcesLinked(g, link); got != want {
+		t.Errorf("SourcesLinked() =\n%s\nwant\n%s", got, want)
+	}
+}

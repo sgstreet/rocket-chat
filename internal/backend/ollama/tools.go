@@ -122,8 +122,12 @@ func (t *searchTurn) search(ctx context.Context, query string) (string, error) {
 	}
 	var b strings.Builder
 	for _, r := range results {
-		n := t.source(chat.Source{Title: r.Title, URL: r.URL, Snippet: r.Content})
-		fmt.Fprintf(&b, "[%d] %s\nURL: %s\n%s\n\n", n, r.Title, r.URL, strings.TrimSpace(r.Content))
+		content := strings.TrimSpace(r.Content)
+		if len(content) > t.settings.MaxResultChars {
+			content = truncateUTF8(content, t.settings.MaxResultChars) + " [truncated; use web_fetch for the full page]"
+		}
+		n := t.source(chat.Source{Title: r.Title, URL: r.URL, Snippet: content})
+		fmt.Fprintf(&b, "[%d] %s\nURL: %s\n%s\n\n", n, r.Title, r.URL, content)
 	}
 	return b.String() + citeHint, nil
 }
