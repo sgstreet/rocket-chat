@@ -2,6 +2,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"flag"
@@ -18,6 +19,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
+	"github.com/sgstreet/rocket-chat/internal/roles"
 	"github.com/sgstreet/rocket-chat/internal/store"
 	"github.com/sgstreet/rocket-chat/internal/tui"
 
@@ -65,10 +67,10 @@ func main() {
 
 type options struct {
 	backend, model, prompt, system string
-	configPath, resume             string
+	configPath, resume, role       string
 	search, thinking, verbose      bool
 	showVersion, listBackends      bool
-	listModels                     bool
+	listModels, listRoles          bool
 }
 
 func run(ctx context.Context, args []string, e env) int {
@@ -95,7 +97,10 @@ Flags:
 		fs.StringVar(&o.prompt, name, "", "prompt; piped stdin is appended to it")
 	}
 	for _, name := range []string{"s", "system"} {
-		fs.StringVar(&o.system, name, "", "system prompt")
+		fs.StringVar(&o.system, name, "", "system prompt text (instead of a role)")
+	}
+	for _, name := range []string{"r", "role"} {
+		fs.StringVar(&o.role, name, "", "named system prompt, e.g. technical (see --list-roles)")
 	}
 	for _, name := range []string{"v", "verbose"} {
 		fs.BoolVar(&o.verbose, name, false, "show progress and usage on stderr")
@@ -107,6 +112,7 @@ Flags:
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&o.listBackends, "list-backends", false, "print the available backends and exit")
 	fs.BoolVar(&o.listModels, "list-models", false, "print the selected backend's models and exit")
+	fs.BoolVar(&o.listRoles, "list-roles", false, "print the available roles and exit")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
@@ -127,9 +133,38 @@ Flags:
 		return exitOK
 	}
 
-	cfg, err := loadConfig(o.configPath)
+	cfg, cfgPath, err := loadConfig(o.configPath)
 	if err != nil {
 		return fail(e, err)
+	}
+	lib, err := roles.Load(cfg.Roles, filepath.Dir(cfgPath))
+	if err != nil {
+		return fail(e, fmt.Errorf("%s: %w", cfgPath, err))
+	}
+	if o.listRoles {
+		return listRoles(e, lib, cfg.DefaultRole)
+	}
+	if o.role != "" && o.system != "" {
+		fmt.Fprintln(e.stderr, "rocket-chat: give either --role or -s, not both")
+		return exitUsage
+	}
+	// An explicit --role, or the configured default when no system prompt
+	// was given.
+	roleName := o.role
+	if roleName == "" && o.system == "" {
+		roleName = cfg.DefaultRole
+	}
+	var role *roles.Role
+	if roleName != "" {
+		r, ok := lib.Find(roleName)
+		if !ok {
+			return fail(e, fmt.Errorf("unknown role %q (available: %s)", roleName, strings.Join(lib.Names(), ", ")))
+		}
+		role = &r
+	}
+	system := o.system
+	if role != nil {
+		system = role.Prompt
 	}
 
 	name := o.backend
@@ -171,12 +206,14 @@ Flags:
 		opts := tui.Options{
 			Backend:  name,
 			Model:    o.model,
-			System:   o.system,
+			System:   system,
 			Search:   search,
+			Roles:    lib,
+			Role:     roleID(role),
 			Open:     open,
 			Backends: backend.Names(),
 		}
-		if err := sessionOptions(cfg.Sessions, o, &opts); err != nil {
+		if err := sessionOptions(cfg.Sessions, o, role, &opts); err != nil {
 			return fail(e, err)
 		}
 		if opts.Theme, err = cfg.UI.ThemeName(); err != nil {
@@ -212,8 +249,8 @@ Flags:
 
 	req := backend.Request{
 		Model:    o.model,
-		System:   o.system,
-		Search:   search,
+		System:   system,
+		Search:   cmp.Or(search, roleSearch(role)),
 		Messages: []chat.Message{{Role: chat.RoleUser, Text: text}},
 	}
 
@@ -259,7 +296,7 @@ func fail(e env, err error) int {
 // sessionOptions opens the session store and loads the chat to resume. A
 // resumed chat keeps its backend, model and system prompt unless flags
 // override them.
-func sessionOptions(cfg config.Sessions, o options, opts *tui.Options) error {
+func sessionOptions(cfg config.Sessions, o options, role *roles.Role, opts *tui.Options) error {
 	if !cfg.SaveEnabled() {
 		if o.resume != "" {
 			return errors.New("--resume needs saved sessions, which are turned off (sessions.save)")
@@ -293,8 +330,11 @@ func sessionOptions(cfg config.Sessions, o options, opts *tui.Options) error {
 	if o.model != "" {
 		sess.Model = o.model
 	}
-	if o.system != "" {
-		sess.System = o.system
+	switch {
+	case o.system != "":
+		sess.System, sess.Role = o.system, ""
+	case o.role != "" && role != nil:
+		sess.System, sess.Role = role.Prompt, role.ID
 	}
 	opts.Resume = sess
 	return nil
@@ -318,18 +358,49 @@ func expandHome(path string) (string, error) {
 
 // loadConfig reads the config file. A file named with --config must exist;
 // the default location may be absent.
-func loadConfig(path string) (config.Config, error) {
+func loadConfig(path string) (config.Config, string, error) {
 	if path != "" {
 		if _, err := os.Stat(path); err != nil {
-			return config.Config{}, err
+			return config.Config{}, "", err
 		}
 	} else {
 		var err error
 		if path, err = config.Path(); err != nil {
-			return config.Config{}, err
+			return config.Config{}, "", err
 		}
 	}
-	return config.Load(path)
+	cfg, err := config.Load(path)
+	return cfg, path, err
+}
+
+func listRoles(e env, lib *roles.Library, defaultRole string) int {
+	def, _ := lib.Find(defaultRole)
+	w := tabwriter.NewWriter(e.stdout, 0, 0, 2, ' ', 0)
+	for _, r := range lib.List() {
+		marker := " "
+		if defaultRole != "" && r.ID == def.ID {
+			marker = "*"
+		}
+		fmt.Fprintf(w, "%s %s\t%s\t%s\n", marker, r.ID, r.Name, r.Description)
+	}
+	if err := w.Flush(); err != nil {
+		return fail(e, err)
+	}
+	return exitOK
+}
+
+func roleID(r *roles.Role) string {
+	if r == nil {
+		return ""
+	}
+	return r.ID
+}
+
+func roleSearch(r *roles.Role) *bool {
+	if r == nil {
+		return nil
+	}
+	return r.Search
 }
 
 // buildPrompt combines the -p prompt or the positional arguments with piped

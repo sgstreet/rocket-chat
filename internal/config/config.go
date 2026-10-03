@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/sgstreet/rocket-chat/internal/roles"
 )
 
 // Environment variables that override the config file.
@@ -31,6 +33,11 @@ type Config struct {
 	Sessions Sessions `json:"sessions"`
 	// UI configures the interactive chat.
 	UI UI `json:"ui"`
+	// Roles adds named system prompts to the built-in ones, or replaces
+	// built-ins with the same ID.
+	Roles map[string]roles.Config `json:"roles"`
+	// DefaultRole is the role used when neither --role nor -s is given.
+	DefaultRole string `json:"default_role"`
 }
 
 // Sessions is the sessions config section.

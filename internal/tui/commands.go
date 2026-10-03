@@ -15,7 +15,8 @@ import (
 const helpText = `Commands:
   /backend [name]        show backends, or switch to one
   /model [name|number]   list models, or choose one (by name or list number)
-  /system [text|clear]   show, set or clear the system prompt
+  /role [name|off]       list roles (named system prompts), or switch role
+  /system [text|clear]   show, set or clear a custom system prompt
   /search on|off|default turn web search on or off for this chat
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
@@ -68,6 +69,8 @@ func (m *model) command(line string) tea.Cmd {
 		m.switchBackend(arg)
 	case "model":
 		return m.chooseModel(arg)
+	case "role", "roles":
+		m.setRole(arg)
 	case "system":
 		m.setSystem(arg)
 	case "search":
@@ -179,18 +182,69 @@ func (m *model) setSystem(arg string) {
 			m.notice("System prompt: %s", m.system)
 		}
 	case "clear", "off":
-		m.system = ""
+		m.system, m.role = "", ""
 		m.notice("System prompt cleared.")
 	default:
-		m.system = arg
-		m.notice("System prompt set.")
+		m.system, m.role = arg, ""
+		m.notice("Custom system prompt set.")
 	}
+}
+
+func (m *model) setRole(arg string) {
+	switch arg {
+	case "":
+		var b strings.Builder
+		b.WriteString("Roles (switch with /role <name>, /role off for none):")
+		for _, r := range m.roles.List() {
+			marker := " "
+			if r.ID == m.role {
+				marker = "*"
+			}
+			fmt.Fprintf(&b, "\n %s %-12s %s", marker, r.ID, r.Name)
+			if r.Description != "" {
+				b.WriteString(" — " + r.Description)
+			}
+		}
+		m.notice("%s", b.String())
+		return
+	case "off", "none", "clear":
+		m.system, m.role = "", ""
+		if !m.searchSet {
+			m.search = nil
+		}
+		m.notice("No role; no system prompt.")
+		return
+	}
+	r, ok := m.roles.Find(arg)
+	if !ok {
+		m.errorf("No role %q. Available: %s.", arg, strings.Join(m.roles.Names(), ", "))
+		return
+	}
+	m.system, m.role = r.Prompt, r.ID
+	msg := "Role: " + r.Name + "."
+	if !m.searchSet {
+		m.search = r.Search
+		if r.Search != nil && m.b.Capabilities().WebSearch {
+			state := "off"
+			if *r.Search {
+				state = "on"
+			}
+			msg += " Web search is " + state + "."
+		}
+	}
+	m.notice("%s", msg)
 }
 
 func (m *model) setSearch(arg string) {
 	if !m.b.Capabilities().WebSearch {
 		m.errorf("%s cannot search the web.", m.backendName)
 		return
+	}
+	switch arg {
+	case "on", "off":
+		m.searchSet = true
+	case "default":
+		m.searchSet = false
 	}
 	switch arg {
 	case "on":

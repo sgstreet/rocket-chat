@@ -29,6 +29,7 @@ func (m *model) save() {
 	m.session.Backend = m.backendName
 	m.session.Model = m.modelName
 	m.session.System = m.system
+	m.session.Role = m.role
 	m.session.Messages = history
 	if err := m.opts.Store.Save(m.session); err != nil {
 		if !m.saveFailed {
@@ -50,7 +51,7 @@ func (m *model) restore(sess *store.Session) {
 			m.b, m.backendName = b, sess.Backend
 		}
 	}
-	m.modelName, m.system, m.models = sess.Model, sess.System, nil
+	m.modelName, m.system, m.role, m.models = sess.Model, sess.System, sess.Role, nil
 	for _, msg := range sess.Messages {
 		kind := entryUser
 		if msg.Role == chat.RoleAssistant {

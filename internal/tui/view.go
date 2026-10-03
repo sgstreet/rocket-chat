@@ -182,8 +182,11 @@ func (m *model) statusLine() string {
 		}
 		parts = append(parts, web)
 	}
-	if m.system != "" {
-		parts = append(parts, "system prompt set")
+	switch r, ok := m.roles.Find(m.role); {
+	case m.role != "" && ok:
+		parts = append(parts, "role: "+r.Name)
+	case m.system != "":
+		parts = append(parts, "custom system prompt")
 	}
 	if m.streaming {
 		parts = append(parts, fmt.Sprintf("%s answering… esc to stop", m.spinner.View()))

@@ -19,13 +19,15 @@ import (
 
 // Session is a saved conversation.
 type Session struct {
-	ID       string         `json:"id"`
-	Title    string         `json:"title"`
-	Created  time.Time      `json:"created"`
-	Updated  time.Time      `json:"updated"`
-	Backend  string         `json:"backend"`
-	Model    string         `json:"model,omitempty"`
-	System   string         `json:"system,omitempty"`
+	ID      string    `json:"id"`
+	Title   string    `json:"title"`
+	Created time.Time `json:"created"`
+	Updated time.Time `json:"updated"`
+	Backend string    `json:"backend"`
+	Model   string    `json:"model,omitempty"`
+	System  string    `json:"system,omitempty"`
+	// Role is the ID of the role whose prompt System holds, if any.
+	Role     string         `json:"role,omitempty"`
 	Messages []chat.Message `json:"messages"`
 }
 
