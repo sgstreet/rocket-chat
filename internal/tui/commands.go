@@ -16,7 +16,7 @@ const helpText = `Commands:
   /backend [name]        show backends, or switch to one
   /model [name|number]   list models, or choose one (by name or list number)
   /role [name|off]       list roles (named system prompts), or switch role
-  /system [text|clear]   show, set or clear a custom system prompt
+  /system [text|clear]   list prompts, or set or clear a custom system prompt
   /search on|off|default turn web search on or off for this chat
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
@@ -176,11 +176,18 @@ func (m *model) showModels(msg modelsMsg) {
 func (m *model) setSystem(arg string) {
 	switch arg {
 	case "":
-		if m.system == "" {
-			m.notice("No system prompt. Set one with /system <text>.")
-		} else {
-			m.notice("System prompt: %s", m.system)
+		var b strings.Builder
+		switch r, ok := m.roles.Find(m.role); {
+		case m.role != "" && ok:
+			b.WriteString("System prompt: role " + r.Name + ".")
+		case m.system != "":
+			b.WriteString("System prompt (custom): " + m.system)
+		default:
+			b.WriteString("No system prompt.")
 		}
+		b.WriteString("\n\n")
+		m.writeRoles(&b, "Available prompts (choose with /role <name>, or write your own with /system <text>):")
+		m.notice("%s", b.String())
 	case "clear", "off":
 		m.system, m.role = "", ""
 		m.notice("System prompt cleared.")
@@ -190,21 +197,26 @@ func (m *model) setSystem(arg string) {
 	}
 }
 
+// writeRoles writes header and the role library, marking the current role.
+func (m *model) writeRoles(b *strings.Builder, header string) {
+	b.WriteString(header)
+	for _, r := range m.roles.List() {
+		marker := " "
+		if r.ID == m.role {
+			marker = "*"
+		}
+		fmt.Fprintf(b, "\n %s %-12s %s", marker, r.ID, r.Name)
+		if r.Description != "" {
+			b.WriteString(" — " + r.Description)
+		}
+	}
+}
+
 func (m *model) setRole(arg string) {
 	switch arg {
 	case "":
 		var b strings.Builder
-		b.WriteString("Roles (switch with /role <name>, /role off for none):")
-		for _, r := range m.roles.List() {
-			marker := " "
-			if r.ID == m.role {
-				marker = "*"
-			}
-			fmt.Fprintf(&b, "\n %s %-12s %s", marker, r.ID, r.Name)
-			if r.Description != "" {
-				b.WriteString(" — " + r.Description)
-			}
-		}
+		m.writeRoles(&b, "Roles (switch with /role <name>, /role off for none):")
 		m.notice("%s", b.String())
 		return
 	case "off", "none", "clear":
