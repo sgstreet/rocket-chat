@@ -10,7 +10,6 @@ require (
 	github.com/atotto/clipboard v0.1.4
 	github.com/charmbracelet/x/ansi v0.11.8
 	github.com/ollama/ollama v0.35.1
-	go.yaml.in/yaml/v3 v3.0.5
 	google.golang.org/genai v1.72.0
 )
 

@@ -1,16 +1,17 @@
-// Package config loads rocket-chat's YAML configuration file.
+// Package config loads rocket-chat's JSON configuration file.
 package config
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
-
-	"go.yaml.in/yaml/v3"
+	"strings"
+	"time"
 )
 
 // Environment variables that override the config file.
@@ -23,20 +24,32 @@ const (
 type Config struct {
 	// DefaultBackend is the backend used when none is given on the command
 	// line.
-	DefaultBackend string `yaml:"default_backend"`
+	DefaultBackend string `json:"default_backend"`
 	// Backends holds each backend's own section, decoded by the backend.
-	Backends map[string]yaml.Node `yaml:"backends"`
+	Backends map[string]json.RawMessage `json:"backends"`
 	// Sessions controls saving interactive chats.
-	Sessions Sessions `yaml:"sessions"`
+	Sessions Sessions `json:"sessions"`
 	// UI configures the interactive chat.
-	UI UI `yaml:"ui"`
+	UI UI `json:"ui"`
 }
+
+// Sessions is the sessions config section.
+type Sessions struct {
+	// Save turns saving interactive chats on or off (default on).
+	Save *bool `json:"save"`
+	// Dir is where sessions are saved (default
+	// $XDG_DATA_HOME/rocket-chat/sessions).
+	Dir string `json:"dir"`
+}
+
+// SaveEnabled reports whether interactive chats are saved.
+func (s Sessions) SaveEnabled() bool { return s.Save == nil || *s.Save }
 
 // UI is the ui config section.
 type UI struct {
 	// Theme is "auto" (default, follows the terminal background), "dark"
 	// or "light".
-	Theme string `yaml:"theme"`
+	Theme string `json:"theme"`
 }
 
 // ThemeName returns "dark", "light", or "" for auto.
@@ -50,34 +63,64 @@ func (u UI) ThemeName() (string, error) {
 	return "", fmt.Errorf("ui.theme must be auto, dark or light, not %q", u.Theme)
 }
 
-// Sessions is the sessions config section.
-type Sessions struct {
-	// Save turns saving interactive chats on or off (default on).
-	Save *bool `yaml:"save"`
-	// Dir is where sessions are saved (default
-	// $XDG_DATA_HOME/rocket-chat/sessions).
-	Dir string `yaml:"dir"`
+// Duration is a time.Duration written in the config as a string with a
+// unit, such as "10m" or "168h".
+type Duration time.Duration
+
+// UnmarshalJSON accepts a duration string.
+func (d *Duration) UnmarshalJSON(b []byte) error {
+	var s string
+	if err := json.Unmarshal(b, &s); err != nil {
+		return fmt.Errorf("duration must be a string with a unit such as \"10m\", not %s", b)
+	}
+	v, err := time.ParseDuration(s)
+	if err != nil {
+		return fmt.Errorf("invalid duration %q: use a number with a unit such as \"30s\", \"10m\" or \"168h\"", s)
+	}
+	*d = Duration(v)
+	return nil
 }
 
-// SaveEnabled reports whether interactive chats are saved.
-func (s Sessions) SaveEnabled() bool { return s.Save == nil || *s.Save }
+// MarshalJSON writes the duration as a string.
+func (d Duration) MarshalJSON() ([]byte, error) {
+	return json.Marshal(time.Duration(d).String())
+}
 
 // Default returns the configuration used when no file exists.
 func Default() Config {
 	return Config{DefaultBackend: "ollama"}
 }
 
+// FileName is the config file's name in the config directory.
+const FileName = "config.json"
+
 // Path returns the config file location: $ROCKET_CHAT_CONFIG if set,
-// otherwise rocket-chat/config.yaml under the user config directory.
+// otherwise rocket-chat/config.json under the user config directory. A YAML
+// config left there from an older version is an error rather than being
+// silently ignored.
 func Path() (string, error) {
 	if p := os.Getenv(EnvConfigPath); p != "" {
 		return p, nil
 	}
-	dir, err := os.UserConfigDir()
+	base, err := os.UserConfigDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, "rocket-chat", "config.yaml"), nil
+	dir := filepath.Join(base, "rocket-chat")
+	path := filepath.Join(dir, FileName)
+	if !fileExists(path) {
+		for _, old := range []string{"config.yaml", "config.yml"} {
+			if p := filepath.Join(dir, old); fileExists(p) {
+				return "", fmt.Errorf("%s: YAML config files are no longer supported; convert it to %s", p, path)
+			}
+		}
+	}
+	return path, nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
 
 // Load reads the config file at path and applies environment overrides. A
@@ -90,9 +133,10 @@ func Load(path string) (Config, error) {
 	case err != nil:
 		return Config{}, err
 	default:
-		dec := yaml.NewDecoder(bytes.NewReader(data))
-		dec.KnownFields(true)
-		if err := dec.Decode(&cfg); err != nil && !errors.Is(err, io.EOF) {
+		if err := decode(data, &cfg, true); err != nil {
+			if ext := strings.ToLower(filepath.Ext(path)); ext == ".yaml" || ext == ".yml" {
+				err = fmt.Errorf("YAML config files are no longer supported; write the config as JSON (%w)", err)
+			}
 			return Config{}, fmt.Errorf("%s: %w", path, err)
 		}
 	}
@@ -102,16 +146,72 @@ func Load(path string) (Config, error) {
 	return cfg, nil
 }
 
+// decode reads one JSON object into v, rejecting unknown fields. Empty
+// input leaves v unchanged. withPos adds line and column numbers to errors;
+// they are only meaningful when data is the whole file.
+func decode(data []byte, v any, withPos bool) error {
+	trimmed := bytes.TrimSpace(data)
+	if len(trimmed) == 0 {
+		return nil
+	}
+	if trimmed[0] != '{' {
+		return errors.New("the config must be a JSON object ({ ... })")
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(v); err != nil {
+		return jsonError(data, err, withPos)
+	}
+	if _, err := dec.Token(); !errors.Is(err, io.EOF) {
+		return fmt.Errorf("unexpected data after the JSON object at %s", position(data, dec.InputOffset()))
+	}
+	return nil
+}
+
+// jsonError rewords JSON errors, adding the line and column when withPos
+// is set.
+func jsonError(data []byte, err error, withPos bool) error {
+	var syntax *json.SyntaxError
+	var typeErr *json.UnmarshalTypeError
+	switch {
+	case errors.As(err, &syntax):
+		// Offset counts the bytes read, including the offending one.
+		return fmt.Errorf("invalid JSON at %s: %w", position(data, syntax.Offset-1), err)
+	case errors.As(err, &typeErr):
+		msg := fmt.Sprintf("%s must be %s, not %s", typeErr.Field, typeErr.Type, typeErr.Value)
+		if withPos {
+			msg = fmt.Sprintf("at %s: %s", position(data, typeErr.Offset), msg)
+		}
+		return errors.New(msg)
+	case errors.Is(err, io.ErrUnexpectedEOF):
+		return errors.New("invalid JSON: unexpected end of file")
+	}
+	// Unknown-field errors carry no type; drop the package prefix.
+	if msg, ok := strings.CutPrefix(err.Error(), "json: "); ok {
+		return errors.New(msg)
+	}
+	return err
+}
+
+// position turns a byte offset into "line L, column C".
+func position(data []byte, offset int64) string {
+	offset = min(max(offset, 0), int64(len(data)))
+	before := data[:offset]
+	line := bytes.Count(before, []byte("\n")) + 1
+	col := int(offset) - bytes.LastIndexByte(before, '\n')
+	return fmt.Sprintf("line %d, column %d", line, col)
+}
+
 // Decoder returns a function that decodes the named backend's section into
-// a settings struct, as expected by backend.Factory. It leaves the struct
-// untouched when the section is absent.
+// a settings struct, as expected by backend.Factory. Unknown fields are
+// errors. It leaves the struct untouched when the section is absent.
 func (c Config) Decoder(name string) func(v any) error {
 	return func(v any) error {
-		node, ok := c.Backends[name]
+		raw, ok := c.Backends[name]
 		if !ok {
 			return nil
 		}
-		if err := node.Decode(v); err != nil {
+		if err := decode(raw, v, false); err != nil {
 			return fmt.Errorf("config backends.%s: %w", name, err)
 		}
 		return nil

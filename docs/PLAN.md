@@ -11,6 +11,7 @@ backends are **Ollama** (local models, optional Ollama web search) and
 | Plugin mechanism | Backends compiled in, registered from `init()` (like `database/sql` drivers). Out-of-process plugins over JSON-RPC may come later. |
 | UI | Full-screen Bubble Tea app. |
 | Session storage | One JSON file per session under `~/.local/share/rocket-chat`. |
+| Config file | JSON only (`config.json`); YAML support was removed. Backend sections are strict too. |
 | Gemini auth | Gemini API key only (`GEMINI_API_KEY`). No Vertex AI in v0.1. |
 | Gemini search | `GoogleSearch` tool through `Models.GenerateContentStream`. On by default. |
 | Ollama search | Ollama web search API, run by our own tool-calling loop. Off by default. |
@@ -79,7 +80,7 @@ internal/backend/ollama/    Ollama chat + web search tool loop
 internal/backend/gemini/    Gemini + Google Search grounding
 internal/tui/               Bubble Tea model and views
 internal/render/            markdown and citation formatting
-internal/config/            YAML config + env overrides
+internal/config/            JSON config + env overrides
 internal/store/             session persistence
 ```
 

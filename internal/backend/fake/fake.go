@@ -12,6 +12,7 @@ import (
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/config"
 )
 
 // Name is the name the fake backend is registered under.
@@ -23,14 +24,14 @@ func init() {
 		if err := decode(&s); err != nil {
 			return nil, err
 		}
-		return &Backend{Delay: s.Delay}, nil
+		return &Backend{Delay: time.Duration(s.Delay)}, nil
 	})
 }
 
 // Settings is the fake backend's config section.
 type Settings struct {
 	// Delay is the pause before each event, to imitate a slow model.
-	Delay time.Duration `yaml:"delay"`
+	Delay config.Duration `json:"delay"`
 }
 
 // Backend is a fake chat backend. The zero value echoes the last user

@@ -58,36 +58,57 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
 
 ## Configuration
 
-The config file is `$ROCKET_CHAT_CONFIG`, or `rocket-chat/config.yaml` under the user config
-directory (`~/.config` on Linux). `ROCKET_CHAT_BACKEND` overrides `default_backend`.
+Settings live in a JSON file: the one named by `--config` or `$ROCKET_CHAT_CONFIG`, otherwise
+`rocket-chat/config.json` under the user config directory (`~/.config` on Linux). Without a file the
+defaults apply. `ROCKET_CHAT_BACKEND` overrides `default_backend`. Unknown settings are errors, so
+typos are caught, and syntax errors give the line and column.
 
-```yaml
-ui:
-  theme: auto                      # auto (follow the terminal), dark or light
-sessions:
-  save: true                       # save interactive chats (default true)
-  dir: ~/chats                     # default: $XDG_DATA_HOME/rocket-chat/sessions
+```json
+{
+  "default_backend": "ollama",
+  "ui": { "theme": "auto" },
+  "sessions": { "save": true, "dir": "~/chats" },
+  "backends": {
+    "ollama": {
+      "model": "qwen3:4b",
+      "keep_alive": "10m",
+      "search": { "enabled": false, "max_results": 5 }
+    },
+    "gemini": {
+      "model": "gemini-flash-lite-latest",
+      "search": { "enabled": true, "since": "168h" }
+    }
+  }
+}
 ```
 
-```yaml
-default_backend: ollama
-backends:
-  ollama:
-    host: http://127.0.0.1:11434   # default: $OLLAMA_HOST, then 127.0.0.1:11434
-    model: qwen3:4b                # used when -m is not given
-    temperature: 0.7               # optional; model default otherwise
-    num_ctx: 32768                 # optional context window
-    keep_alive: 10m                # optional; how long the model stays loaded
-    think: false                   # optional; omit to use the model's default
-    search:
-      enabled: false               # web search default; --search overrides
-      mode: auto                   # auto | direct | local (see below)
-      max_results: 5               # results per search, 1-10
-      max_rounds: 5                # tool-call rounds before the model must answer
-      max_result_chars: 2000       # each search result is cut to this; the model can web_fetch the page
-      max_fetch_chars: 8000        # fetched pages are truncated to this
-      num_ctx: 32768               # minimum context window while searching
-```
+Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"10m"`, `"168h"`.
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `default_backend` | `ollama` | Backend used when `-b` is not given |
+| `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
+| `sessions.save` | `true` | Save interactive chats |
+| `sessions.dir` | `$XDG_DATA_HOME/rocket-chat/sessions` | Where chats are saved; `~` is expanded |
+
+`backends.ollama`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `host` | `$OLLAMA_HOST`, then `http://127.0.0.1:11434` | Ollama server |
+| `model` | none | Model used when `-m` is not given |
+| `temperature` | model default | Sampling temperature |
+| `num_ctx` | model default | Context window in tokens |
+| `keep_alive` | Ollama default | How long the model stays loaded |
+| `think` | model default | `true`/`false` turns reasoning on or off |
+| `search.enabled` | `false` | Web search default; `--search` overrides |
+| `search.mode` | `auto` | `auto`, `direct` or `local` (see below) |
+| `search.max_results` | `5` | Results per search, 1–10 |
+| `search.max_rounds` | `5` | Tool-call rounds before the model must answer |
+| `search.max_result_chars` | `2000` | Each search result is cut to this; the model can fetch the page |
+| `search.max_fetch_chars` | `8000` | Fetched pages are cut to this |
+| `search.num_ctx` | `32768` | Minimum context window while searching |
+| `search.api_url` | `https://ollama.com` | Web search API for `direct` mode |
 
 ### Ollama web search
 
@@ -106,16 +127,16 @@ default. It needs an ollama.com account, used in one of two ways:
 
 ### Gemini
 
-```yaml
-backends:
-  gemini:
-    model: gemini-3.8-flash        # default: gemini-flash-latest
-    temperature: 0.7               # optional
-    think: true                    # optional; return the model's reasoning (--thinking shows it)
-    search:
-      enabled: true                # Grounding with Google Search; on by default
-      since: 168h                  # optional; only pages from the last week
-```
+`backends.gemini`:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `model` | `gemini-flash-latest` | Model used when `-m` is not given |
+| `temperature` | model default | Sampling temperature |
+| `think` | off | `true` returns the model's reasoning (`--thinking` shows it) |
+| `search.enabled` | `true` | Grounding with Google Search; `--search=false` turns it off |
+| `search.since` | none | Only use pages from this long ago until now, e.g. `"168h"` |
+| `base_url` | Gemini API | API endpoint, for proxies |
 
 Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) to a key from https://aistudio.google.com/apikey.
 `rocket-chat -b gemini --list-models` lists the models your key can use.

@@ -18,6 +18,7 @@ import (
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/config"
 )
 
 // Name is the name the backend is registered under.
@@ -44,25 +45,25 @@ func init() {
 type Settings struct {
 	// Model is used when the request does not name one (default
 	// DefaultModel).
-	Model string `yaml:"model"`
+	Model string `json:"model"`
 	// Temperature overrides the model's default when set.
-	Temperature *float64 `yaml:"temperature"`
+	Temperature *float64 `json:"temperature"`
 	// Think, when true, asks the model to return its reasoning.
-	Think *bool `yaml:"think"`
+	Think *bool `json:"think"`
 	// Search configures Grounding with Google Search.
-	Search SearchSettings `yaml:"search"`
+	Search SearchSettings `json:"search"`
 	// BaseURL overrides the API endpoint (proxies, testing).
-	BaseURL string `yaml:"base_url"`
+	BaseURL string `json:"base_url"`
 }
 
 // SearchSettings is the backends.gemini.search config section.
 type SearchSettings struct {
 	// Enabled turns Google Search grounding on when the request does not
 	// say. Default true.
-	Enabled *bool `yaml:"enabled"`
+	Enabled *bool `json:"enabled"`
 	// Since limits results to pages from this long ago until now, for
 	// example 168h for the last week. Zero means no limit.
-	Since time.Duration `yaml:"since"`
+	Since config.Duration `json:"since"`
 }
 
 // Backend talks to the Gemini API.
@@ -225,7 +226,7 @@ func (b *Backend) config(req backend.Request) *genai.GenerateContentConfig {
 	}
 	if search {
 		gs := &genai.GoogleSearch{}
-		if since := b.settings.Search.Since; since > 0 {
+		if since := time.Duration(b.settings.Search.Since); since > 0 {
 			now := b.now().UTC()
 			gs.TimeRangeFilter = &genai.Interval{StartTime: now.Add(-since), EndTime: now}
 		}
