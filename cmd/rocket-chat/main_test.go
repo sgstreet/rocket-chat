@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/backend/fake"
@@ -50,17 +52,17 @@ type result struct {
 	out, errOut string
 }
 
-// cli runs the command with an isolated config. A nil stdin means stdin is a
-// terminal.
+// cli runs the command with an isolated config. A nil stdin means stdin is
+// not a pipe or file.
 func cli(t *testing.T, ctx context.Context, stdin *string, args ...string) result {
 	t.Helper()
 	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
 	t.Setenv(config.EnvBackend, "")
 	var out, errOut bytes.Buffer
-	e := env{stdout: &out, stderr: &errOut, stdinIsTerminal: true}
+	e := env{stdout: &out, stderr: &errOut}
 	if stdin != nil {
 		e.stdin = strings.NewReader(*stdin)
-		e.stdinIsTerminal = false
+		e.stdinIsInput = true
 	}
 	code := run(ctx, args, e)
 	return result{code: code, out: out.String(), errOut: errOut.String()}
@@ -230,6 +232,54 @@ func TestInterrupted(t *testing.T) {
 	cancel()
 	r := cli(t, ctx, nil, "-b", "fake", "q")
 	if r.code != exitInterrupted || !strings.Contains(r.errOut, "interrupted") {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestStdinThatNeverClosesIsInterruptible(t *testing.T) {
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
+	pr, pw := io.Pipe()
+	defer pw.Close()
+	ctx, cancel := context.WithCancel(t.Context())
+	time.AfterFunc(50*time.Millisecond, cancel)
+	var out, errOut bytes.Buffer
+	code := run(ctx, []string{"-b", "fake", "question"}, env{stdin: pr, stdinIsInput: true, stdout: &out, stderr: &errOut})
+	if code != exitInterrupted {
+		t.Errorf("exit %d, stderr %q; want %d", code, errOut.String(), exitInterrupted)
+	}
+}
+
+func TestIsInput(t *testing.T) {
+	devNull, err := os.Open(os.DevNull)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer devNull.Close()
+	if isInput(devNull) {
+		t.Error("/dev/null treated as input")
+	}
+	pr, pw, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer pr.Close()
+	defer pw.Close()
+	if !isInput(pr) {
+		t.Error("pipe not treated as input")
+	}
+	f, err := os.CreateTemp(t.TempDir(), "in")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer f.Close()
+	if !isInput(f) {
+		t.Error("regular file not treated as input")
+	}
+}
+
+func TestMissingConfigFlagIsAnError(t *testing.T) {
+	r := cli(t, t.Context(), nil, "--config", filepath.Join(t.TempDir(), "missing.yaml"), "-b", "fake", "q")
+	if r.code != exitError || !strings.Contains(r.errOut, "missing.yaml") {
 		t.Errorf("got %+v", r)
 	}
 }
