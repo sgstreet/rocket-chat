@@ -380,8 +380,13 @@ func renderStyle(ui config.UI, e env) (string, error) {
 
 func listModels(ctx context.Context, b backend.Backend, e env) int {
 	models, err := b.Models(ctx)
-	if err != nil {
+	partial, isPartial := errors.AsType[*backend.PartialList](err)
+	if err != nil && !isPartial {
 		return fail(e, err)
+	}
+	if isPartial {
+		// The models that could be listed are still worth showing.
+		defer fmt.Fprintln(e.stderr, "rocket-chat:", partial)
 	}
 	w := tabwriter.NewWriter(e.stdout, 0, 0, 2, ' ', 0)
 	for _, m := range models {

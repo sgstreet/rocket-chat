@@ -303,6 +303,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `host` | `$OLLAMA_HOST`, then `http://127.0.0.1:11434` | Ollama server |
 | `api_key` | none | ollama.com API key for web search; `$OLLAMA_API_KEY` takes precedence (see [API keys](#api-keys)) |
 | `model` | none | Model used when `-m` is not given |
+| `cloud_models` | `true` | List the ollama.com cloud models in `/model` and `--list-models` (see below) |
 | `temperature` | model default | Sampling temperature |
 | `num_ctx` | model default | Context window in tokens |
 | `keep_alive` | Ollama default | How long the model stays loaded |
@@ -340,6 +341,21 @@ default), which can hold several GB of GPU memory, so when rocket-chat exits it 
 unload the models it chatted with. Models another running copy of rocket-chat has used stay loaded.
 Set `"unload_on_exit": false` to leave the models loaded, for example when `keep_alive` is set to
 keep them warm. `ollama ps` shows what is loaded.
+
+### Ollama cloud models
+
+Ollama runs some models on ollama.com instead of your GPU. `/model` and `--list-models` list them
+after your local models, marked `cloud`, with the names your Ollama server knows them by, such as
+`gpt-oss:120b-cloud` or `kimi-k3:cloud`. The list comes from `https://ollama.com/api/tags` and is
+fetched once per session. If ollama.com cannot be reached, only the local models are listed, with a
+note saying why. Set `"cloud_models": false` to list local models only.
+
+A cloud model is used like any other (`-m gpt-oss:120b-cloud` or `/model kimi-k3:cloud`): rocket-chat
+sends the request to your Ollama server, which passes it on to ollama.com. Nothing is downloaded,
+but the server must be signed in to ollama.com once with `ollama signin`; rocket-chat says so if it
+is not. Older Ollama versions only run cloud models that have been pulled first
+(`ollama pull gpt-oss:120b-cloud`); update Ollama to use the rest. Cloud models are not unloaded on
+exit, since they use no memory on your machine.
 
 ### Ollama web search
 

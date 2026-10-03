@@ -319,3 +319,22 @@ func TestModelCompletionFetchesModels(t *testing.T) {
 		t.Errorf("late list: input %q, models %d", h.m.input.Value(), len(h.m.models))
 	}
 }
+
+func TestPartialModelList(t *testing.T) {
+	h := newHarness(t, map[string]*fake.Backend{"a": {}}, "a")
+	partial := &backend.PartialList{Err: errors.New("cloud models not listed: offline")}
+	models := []backend.ModelInfo{{Name: "qwen3:0.6b"}, {Name: "kimi-k3:cloud", Description: "cloud"}}
+
+	h.send(modelsMsg{backend: "a", models: models, err: partial})
+	got := h.last(entryNotice).text
+	if !strings.Contains(got, "kimi-k3:cloud  cloud") || !strings.Contains(got, "(cloud models not listed: offline)") {
+		t.Errorf("listing = %q", got)
+	}
+
+	// Tab completion uses a partial list too.
+	h.m.models = nil
+	h.send(modelsMsg{backend: "a", models: models, err: partial, forCompletion: true})
+	if len(h.m.models) != 2 {
+		t.Errorf("completion list = %v", h.m.models)
+	}
+}
