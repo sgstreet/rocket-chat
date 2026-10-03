@@ -19,6 +19,8 @@ type Message struct {
 	Thinking string `json:"thinking,omitempty"`
 	// Backend is the name of the backend that produced an assistant message.
 	Backend string `json:"backend,omitempty"`
+	// Model is the model that produced an assistant message, when known.
+	Model string `json:"model,omitempty"`
 	// Grounding describes the web sources behind an assistant message.
 	Grounding *Grounding `json:"grounding,omitempty"`
 }

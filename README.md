@@ -29,6 +29,10 @@ Run `rocket-chat` with no prompt for the interactive chat:
   `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/quit`.
 - Switching from Gemini to another backend keeps the conversation, but answers grounded with
   Google Search are not sent to the other backend (Gemini API terms).
+- Chats are saved after every reply. `/sessions` lists them, `/resume [number]` continues one,
+  `/export [file]` writes the chat as Markdown, and `rocket-chat --resume last` (or a session ID)
+  reopens one from the command line. `-b`, `-m` and `-s` override the saved backend, model and
+  system prompt.
 
 Give a prompt for a single answer on stdout:
 
@@ -47,6 +51,12 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
 
 The config file is `$ROCKET_CHAT_CONFIG`, or `rocket-chat/config.yaml` under the user config
 directory (`~/.config` on Linux). `ROCKET_CHAT_BACKEND` overrides `default_backend`.
+
+```yaml
+sessions:
+  save: true                       # save interactive chats (default true)
+  dir: ~/chats                     # default: $XDG_DATA_HOME/rocket-chat/sessions
+```
 
 ```yaml
 default_backend: ollama

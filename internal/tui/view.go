@@ -103,8 +103,8 @@ func (m *model) renderEntry(e *entry, width int) string {
 func (m *model) renderReply(e *entry, width int) string {
 	var b strings.Builder
 	label := e.msg.Backend
-	if e.model != "" {
-		label += "/" + e.model
+	if e.msg.Model != "" {
+		label += "/" + e.msg.Model
 	}
 	b.WriteString(st.assistant.Render(label))
 

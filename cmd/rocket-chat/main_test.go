@@ -15,6 +15,8 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend/fake"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
+	"github.com/sgstreet/rocket-chat/internal/store"
+	"github.com/sgstreet/rocket-chat/internal/tui"
 )
 
 // recorder is the backend behind "test-record"; tests reset it before use.
@@ -314,6 +316,66 @@ func TestInteractiveNeedsTerminal(t *testing.T) {
 	r := cli(t, t.Context(), nil, "-b", "fake")
 	if r.code != exitUsage || !strings.Contains(r.errOut, "interactive chat needs a terminal") {
 		t.Errorf("got %+v", r)
+	}
+}
+
+func TestResumeUsage(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "fake", "--resume", "last", "a question")
+	if r.code != exitUsage || !strings.Contains(r.errOut, "cannot be combined with a prompt") {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestSessionOptions(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	saved := &store.Session{ID: "s1", Backend: "gemini", Model: "old-model", System: "old system",
+		Messages: []chat.Message{{Role: chat.RoleUser, Text: "hi"}}}
+	if err := st.Save(saved); err != nil {
+		t.Fatal(err)
+	}
+
+	var opts tui.Options
+	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "last", model: "new-model"}, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.Store == nil || opts.Resume == nil || opts.Backend != "gemini" {
+		t.Fatalf("opts = %+v", opts)
+	}
+	if opts.Resume.Model != "new-model" || opts.Resume.System != "old system" {
+		t.Errorf("flags should override only what they set: %+v", opts.Resume)
+	}
+
+	opts = tui.Options{Backend: "ollama"}
+	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "s1", backend: "ollama"}, &opts); err != nil {
+		t.Fatal(err)
+	}
+	if opts.Backend != "ollama" {
+		t.Errorf("-b should win over the saved backend, got %q", opts.Backend)
+	}
+
+	off := false
+	opts = tui.Options{}
+	if err := sessionOptions(config.Sessions{Save: &off}, options{}, &opts); err != nil || opts.Store != nil {
+		t.Errorf("save off: store %v, err %v", opts.Store, err)
+	}
+	if err := sessionOptions(config.Sessions{Save: &off}, options{resume: "last"}, &opts); err == nil {
+		t.Error("--resume with saving off should fail")
+	}
+	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "missing"}, &opts); !errors.Is(err, store.ErrNotFound) {
+		t.Errorf("missing session: %v", err)
+	}
+}
+
+func TestExpandHome(t *testing.T) {
+	t.Setenv("HOME", "/home/u")
+	for in, want := range map[string]string{"~/chats": "/home/u/chats", "~": "/home/u", "/abs": "/abs", "": "", "a~/b": "a~/b"} {
+		if got, err := expandHome(in); err != nil || got != want {
+			t.Errorf("expandHome(%q) = %q, %v; want %q", in, got, err, want)
+		}
 	}
 }
 

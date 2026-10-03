@@ -20,6 +20,9 @@ const helpText = `Commands:
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
+  /sessions              list saved chats
+  /resume [number|id]    continue a saved chat (default: the most recent)
+  /export [file]         save this chat as Markdown
   /quit                  leave (also ctrl+c, or ctrl+d on an empty line)
 
 Keys: enter sends · alt+enter or ctrl+j adds a line · esc stops an answer · pgup/pgdn and shift+up/down scroll`
@@ -47,8 +50,14 @@ func (m *model) command(line string) tea.Cmd {
 		m.quitting = true
 		return tea.Quit
 	case "new", "clear":
-		m.entries = nil
+		m.entries, m.session = nil, nil
 		m.notice("New conversation with %s.", m.backendName)
+	case "sessions":
+		m.listSessions()
+	case "resume":
+		m.resume(arg)
+	case "export":
+		m.export(arg)
 	case "thinking":
 		m.showThinking = !m.showThinking
 		m.refresh()

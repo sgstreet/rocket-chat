@@ -15,6 +15,7 @@ import (
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/store"
 )
 
 // Options configures the chat.
@@ -30,6 +31,11 @@ type Options struct {
 	Open func(name string) (backend.Backend, error)
 	// Backends lists the names /backend can switch to.
 	Backends []string
+	// Store saves the chat after every reply and serves /sessions and
+	// /resume. Nil turns saving off.
+	Store *store.Store
+	// Resume, when set, is a saved session to continue.
+	Resume *store.Session
 }
 
 // Run starts the chat and blocks until the user quits or ctx ends.
@@ -60,6 +66,12 @@ type model struct {
 	showThinking bool
 	// models is the last list shown by /model, for selecting by number.
 	models []backend.ModelInfo
+	// session is the saved form of this chat; nil until the first save.
+	session *store.Session
+	// sessions is the last list shown by /sessions.
+	sessions []store.Summary
+	// saveFailed stops repeating the same save error.
+	saveFailed bool
 
 	viewport viewport.Model
 	input    textarea.Model
@@ -106,7 +118,11 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		md:          &markdown{},
 	}
 	m.setStyles()
-	m.notice("Connected to %s. Type /help for commands.", m.backendName)
+	if opts.Resume != nil {
+		m.restore(opts.Resume)
+	} else {
+		m.notice("Connected to %s. Type /help for commands.", m.backendName)
+	}
 	return m, nil
 }
 
