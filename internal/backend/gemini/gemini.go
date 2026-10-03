@@ -98,7 +98,18 @@ func New(s Settings, httpClient *http.Client) (*Backend, error) {
 func (b *Backend) Name() string { return Name }
 
 func (b *Backend) Capabilities() backend.Capabilities {
-	return backend.Capabilities{Thinking: true, WebSearch: true, InlineCitations: true, SearchSuggestions: true}
+	return backend.Capabilities{
+		DefaultModel:      cmp.Or(b.settings.Model, DefaultModel),
+		Thinking:          true,
+		WebSearch:         true,
+		SearchByDefault:   b.searchByDefault(),
+		InlineCitations:   true,
+		SearchSuggestions: true,
+	}
+}
+
+func (b *Backend) searchByDefault() bool {
+	return b.settings.Search.Enabled == nil || *b.settings.Search.Enabled
 }
 
 func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {
@@ -206,7 +217,7 @@ func (b *Backend) config(req backend.Request) *genai.GenerateContentConfig {
 		cfg.ThinkingConfig = &genai.ThinkingConfig{IncludeThoughts: true}
 	}
 
-	search := b.settings.Search.Enabled == nil || *b.settings.Search.Enabled
+	search := b.searchByDefault()
 	if req.Search != nil {
 		search = *req.Search
 	}

@@ -23,9 +23,15 @@ type Backend interface {
 // Capabilities advertises optional features so the UI can hide controls that
 // do not apply.
 type Capabilities struct {
-	Thinking bool
+	// DefaultModel is the model used when the request names none, or ""
+	// when the backend has no default.
+	DefaultModel string
+	Thinking     bool
 	// WebSearch reports whether the backend can search the web.
 	WebSearch bool
+	// SearchByDefault reports whether web search is on when the request
+	// leaves Search nil.
+	SearchByDefault bool
 	// InlineCitations reports whether Grounding.Spans are filled in.
 	InlineCitations bool
 	// SearchSuggestions reports whether Grounding.Suggestions are filled in

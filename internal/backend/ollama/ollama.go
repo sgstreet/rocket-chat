@@ -96,7 +96,12 @@ func New(s Settings, httpClient *http.Client) (*Backend, error) {
 func (b *Backend) Name() string { return Name }
 
 func (b *Backend) Capabilities() backend.Capabilities {
-	return backend.Capabilities{Thinking: true, WebSearch: true}
+	return backend.Capabilities{
+		DefaultModel:    b.settings.Model,
+		Thinking:        true,
+		WebSearch:       true,
+		SearchByDefault: b.settings.Search.Enabled,
+	}
 }
 
 func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {

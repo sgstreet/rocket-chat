@@ -66,3 +66,33 @@ type Link struct {
 	Text string `json:"text"`
 	URL  string `json:"url,omitempty"`
 }
+
+// GroundedBackend names the backend whose grounded answers may only be sent
+// back to itself. The Gemini API terms do not allow Grounding with Google
+// Search results to be mixed with other content, so they are never passed
+// to another model.
+const GroundedBackend = "gemini"
+
+// ForBackend returns the history to send to the named backend. Grounded
+// answers from GroundedBackend, and the user messages that asked for them,
+// are left out when sending to any other backend.
+func ForBackend(messages []Message, backend string) []Message {
+	if backend == GroundedBackend {
+		return messages
+	}
+	out := make([]Message, 0, len(messages))
+	for i, m := range messages {
+		if isRestricted(m) {
+			continue
+		}
+		if m.Role == RoleUser && i+1 < len(messages) && isRestricted(messages[i+1]) {
+			continue
+		}
+		out = append(out, m)
+	}
+	return out
+}
+
+func isRestricted(m Message) bool {
+	return m.Role == RoleAssistant && m.Backend == GroundedBackend && m.Grounding != nil
+}

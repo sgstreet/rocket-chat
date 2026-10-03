@@ -21,6 +21,17 @@ make lint         # go vet + golangci-lint
 
 ## Usage
 
+Run `rocket-chat` with no prompt for the interactive chat:
+
+- Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn scroll,
+  Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
+- `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
+  `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/quit`.
+- Switching from Gemini to another backend keeps the conversation, but answers grounded with
+  Google Search are not sent to the other backend (Gemini API terms).
+
+Give a prompt for a single answer on stdout:
+
 ```sh
 rocket-chat -b gemini "who won the last world cup?"
 cat notes.txt | rocket-chat -p "summarize this"
@@ -31,7 +42,6 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
   terminal; `-v` also prints token usage and timing, and `--thinking` prints the model's reasoning.
 - `--search` / `--search=false` overrides the backend's web search default.
 - Exit codes: 0 success, 1 error, 2 usage error, 130 interrupted (Ctrl+C).
-- Interactive mode is not implemented yet.
 
 ## Configuration
 

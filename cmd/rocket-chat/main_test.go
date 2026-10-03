@@ -310,6 +310,13 @@ func TestIsInput(t *testing.T) {
 	}
 }
 
+func TestInteractiveNeedsTerminal(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "fake")
+	if r.code != exitUsage || !strings.Contains(r.errOut, "interactive chat needs a terminal") {
+		t.Errorf("got %+v", r)
+	}
+}
+
 func TestMissingConfigFlagIsAnError(t *testing.T) {
 	r := cli(t, t.Context(), nil, "--config", filepath.Join(t.TempDir(), "missing.yaml"), "-b", "fake", "q")
 	if r.code != exitError || !strings.Contains(r.errOut, "missing.yaml") {

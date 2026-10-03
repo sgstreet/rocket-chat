@@ -17,6 +17,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
+	"github.com/sgstreet/rocket-chat/internal/tui"
 
 	// Backends register themselves in init.
 	_ "github.com/sgstreet/rocket-chat/internal/backend/fake"
@@ -74,7 +75,8 @@ func run(ctx context.Context, args []string, e env) int {
 	fs.SetOutput(e.stderr)
 	fs.Usage = func() {
 		fmt.Fprint(e.stderr, `Usage:
-  rocket-chat [flags] [question...]
+  rocket-chat [flags]                interactive chat
+  rocket-chat [flags] [question...]  one answer to stdout
   command | rocket-chat [flags] -p "instruction"
 
 Flags:
@@ -131,7 +133,35 @@ Flags:
 	if name == "" {
 		name = cfg.DefaultBackend
 	}
-	b, err := backend.Open(name, cfg.Decoder(name))
+	open := func(name string) (backend.Backend, error) { return backend.Open(name, cfg.Decoder(name)) }
+	var search *bool
+	if searchSet {
+		search = &o.search
+	}
+
+	if o.prompt == "" && len(fs.Args()) == 0 && !e.stdinIsInput && !o.listModels {
+		if !e.stdoutIsTerminal {
+			fmt.Fprintln(e.stderr, "rocket-chat: no prompt given, and interactive chat needs a terminal (see -h)")
+			return exitUsage
+		}
+		err := tui.Run(ctx, tui.Options{
+			Backend:  name,
+			Model:    o.model,
+			System:   o.system,
+			Search:   search,
+			Open:     open,
+			Backends: backend.Names(),
+		})
+		switch {
+		case ctx.Err() != nil:
+			return exitInterrupted
+		case err != nil:
+			return fail(e, err)
+		}
+		return exitOK
+	}
+
+	b, err := open(name)
 	if err != nil {
 		return fail(e, err)
 	}
@@ -152,10 +182,8 @@ Flags:
 	req := backend.Request{
 		Model:    o.model,
 		System:   o.system,
+		Search:   search,
 		Messages: []chat.Message{{Role: chat.RoleUser, Text: text}},
-	}
-	if searchSet {
-		req.Search = &o.search
 	}
 
 	shot := oneShot{
@@ -238,7 +266,7 @@ func buildPrompt(ctx context.Context, prompt string, args []string, e env) (stri
 		}
 	}
 	if strings.TrimSpace(text) == "" {
-		return "", errors.New("no prompt given (interactive mode is not implemented yet; see -h)")
+		return "", errors.New("no prompt given (see -h)")
 	}
 	return text, nil
 }
