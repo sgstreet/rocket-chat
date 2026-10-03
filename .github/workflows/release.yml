@@ -1,16 +1,42 @@
 name: Release
 
+# Releases run when a v* tag is pushed, or by hand from the Actions tab (or
+# the API) with a version: the run checks the version, tags main and
+# releases. Tags pushed by the run's own token do not start a second run.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to release, for example v0.1.0"
+        required: true
+        type: string
 
 permissions:
   contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
     runs-on: ubuntu-latest
     steps:
+      - name: Check the requested version
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Run the release from main, not $GITHUB_REF"
+            exit 1
+          fi
+          if ! [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Version must look like v1.2.3 or v1.2.3-rc.1, not '$VERSION'"
+            exit 1
+          fi
       - uses: actions/checkout@v5
         with:
           fetch-depth: 0
@@ -19,6 +45,19 @@ jobs:
           go-version-file: go.mod
       - name: Test
         run: go test -race ./...
+      - name: Tag the release
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse -q --verify "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::Tag $VERSION already exists"
+            exit 1
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "$VERSION" -m "rocket-chat $VERSION"
+          git push origin "refs/tags/$VERSION"
       - uses: goreleaser/goreleaser-action@v6
         with:
           version: "~> v2"
