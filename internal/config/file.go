@@ -38,7 +38,8 @@ const DefaultFile = `{
   "ui": {
     "theme": "auto",
     "mouse": true,
-    "history": true
+    "history": true,
+    "markdown": true
   },
   "roles": {}
 }

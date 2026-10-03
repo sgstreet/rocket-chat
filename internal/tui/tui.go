@@ -58,6 +58,9 @@ type Options struct {
 	Mouse bool
 	// OpenURL opens a clicked link; nil uses the system's browser.
 	OpenURL func(url string) error
+	// PlainReplies shows replies as the model wrote them instead of
+	// rendering them as Markdown.
+	PlainReplies bool
 }
 
 // Keys reads and saves backends' API keys.
@@ -136,6 +139,8 @@ type model struct {
 	modelsWaiting string
 	// mouse reports whether mouse events are captured.
 	mouse bool
+	// markdown reports whether finished replies are rendered as Markdown.
+	markdown bool
 	// sel is the mouse selection, if any; lines is the rendered transcript
 	// it refers to.
 	sel   *selection
@@ -187,6 +192,7 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		keyInput:    keyIn,
 		hist:        newInputHistory(opts.History),
 		mouse:       opts.Mouse,
+		markdown:    !opts.PlainReplies,
 		ctx:         ctx,
 		opts:        opts,
 		backendName: opts.Backend,

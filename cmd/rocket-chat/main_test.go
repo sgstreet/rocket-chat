@@ -11,6 +11,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/backend/fake"
 	"github.com/sgstreet/rocket-chat/internal/backend/gemini"
@@ -537,5 +539,71 @@ func TestShowRole(t *testing.T) {
 	}
 	if r := cli(t, t.Context(), nil, "--show-role", "lawyer"); r.code != exitError || !strings.Contains(r.errOut, `unknown role "lawyer"`) {
 		t.Errorf("unknown: %+v", r)
+	}
+}
+
+func TestRender(t *testing.T) {
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "config.json"))
+	t.Setenv(config.EnvBackend, "")
+	in := "# Title\n\nSome **bold** text that is long enough to wrap at thirty columns."
+	runWith := func(e env, args ...string) (string, int) {
+		var out, errOut bytes.Buffer
+		e.stdout, e.stderr = &out, &errOut
+		e.stdin, e.stdinIsInput = strings.NewReader(in), true
+		code := run(t.Context(), append([]string{"-b", "fake", "-p", ""}, args...), e)
+		if code != exitOK {
+			t.Fatalf("exit %d: %s", code, errOut.String())
+		}
+		return out.String(), code
+	}
+
+	// The fake backend echoes word by word, so newlines become spaces.
+	raw, _ := runWith(env{})
+	if !strings.HasPrefix(raw, "# Title Some **bold** text") || strings.Contains(raw, "\x1b[") {
+		t.Errorf("without --render: %q", raw)
+	}
+
+	out, _ := runWith(env{termWidth: func() int { return 30 }, darkBackground: func() bool { return false }}, "--render")
+	plain := ansi.Strip(out)
+	if strings.Contains(plain, "**") || strings.Contains(plain, "# Title") || !strings.Contains(plain, "Title") || !strings.Contains(out, "\x1b[") {
+		t.Errorf("not rendered:\n%s", out)
+	}
+	for _, line := range strings.Split(strings.TrimRight(plain, "\n"), "\n") {
+		if ansi.StringWidth(line) > 30 {
+			t.Errorf("wider than the terminal: %q", line)
+		}
+	}
+	if !strings.HasSuffix(out, "\n") {
+		t.Error("no final newline")
+	}
+}
+
+func TestRenderStyle(t *testing.T) {
+	light := env{darkBackground: func() bool { return false }}
+	dark := env{darkBackground: func() bool { return true }}
+	for _, tt := range []struct {
+		theme string
+		e     env
+		want  string
+	}{
+		{"", light, "light"},
+		{"auto", dark, "dark"},
+		{"", env{}, "dark"},
+		{"dark", light, "dark"},
+		{"light", dark, "light"},
+	} {
+		if got, err := renderStyle(config.UI{Theme: tt.theme}, tt.e); err != nil || got != tt.want {
+			t.Errorf("theme %q: %q, %v; want %q", tt.theme, got, err, tt.want)
+		}
+	}
+	if _, err := renderStyle(config.UI{Theme: "neon"}, dark); err == nil {
+		t.Error("bad theme accepted")
+	}
+}
+
+func TestRenderKeepsCitations(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "test-cited", "--render", "q")
+	if plain := ansi.Strip(r.out); r.code != exitOK || !strings.Contains(plain, "Spain won.[1][2]") || !strings.Contains(plain, "Sources:") {
+		t.Errorf("got %+v", r)
 	}
 }

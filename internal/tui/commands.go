@@ -20,6 +20,7 @@ const helpText = `Commands:
   /system [text|clear]   show the current prompt and list roles, or set or clear a custom one
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
+  /markdown on|off       render replies as Markdown, or show the model's text as it is
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -89,6 +90,8 @@ func (m *model) command(line string) tea.Cmd {
 		m.setSearch(arg)
 	case "key", "keys":
 		return m.keyCommand(arg)
+	case "markdown":
+		m.setMarkdown(arg)
 	case "retry":
 		return m.retry()
 	default:
@@ -293,6 +296,28 @@ func (m *model) showRole(name string) {
 	}
 	b.WriteString("\n\n" + r.Prompt)
 	m.notice("%s", b.String())
+}
+
+func (m *model) setMarkdown(arg string) {
+	switch arg {
+	case "on", "off":
+		m.markdown = arg == "on"
+		m.invalidate() // re-render the replies already shown
+		m.refresh()
+		if m.markdown {
+			m.notice("Replies are rendered as Markdown.")
+		} else {
+			m.notice("Replies are shown as the model wrote them, without Markdown rendering.")
+		}
+	case "":
+		state := "off"
+		if m.markdown {
+			state = "on"
+		}
+		m.notice("Markdown rendering is %s. Use /markdown on or /markdown off.", state)
+	default:
+		m.errorf("Use /markdown on or /markdown off.")
+	}
 }
 
 func (m *model) setSearch(arg string) {

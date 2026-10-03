@@ -37,6 +37,12 @@ func (m *model) setStyles() {
 		m.md.style = "light"
 	}
 	m.md.r = nil
+	m.invalidate()
+}
+
+// invalidate drops every entry's cached rendering, so the next refresh
+// renders them again with the current settings.
+func (m *model) invalidate() {
 	for _, e := range m.entries {
 		e.cache = ""
 	}
@@ -122,9 +128,12 @@ func (m *model) renderReply(e *entry, width int) string {
 
 	if text := e.msg.Text; text != "" {
 		b.WriteString("\n")
-		if e.done {
+		switch {
+		case e.done && m.markdown:
 			b.WriteString(m.md.render(render.Cite(text, e.msg.Grounding), width))
-		} else {
+		case e.done:
+			b.WriteString(wrap(render.Cite(text, e.msg.Grounding), width))
+		default:
 			b.WriteString(wrap(text, width) + st.cursor.Render("▍"))
 		}
 	} else if !e.done {

@@ -61,7 +61,13 @@ type UI struct {
 	Mouse *bool `json:"mouse"`
 	// History saves typed inputs between runs for Up/Down (default on).
 	History *bool `json:"history"`
+	// Markdown renders finished replies as Markdown (default on); off
+	// shows the model's text as it is.
+	Markdown *bool `json:"markdown"`
 }
+
+// MarkdownEnabled reports whether replies are rendered as Markdown.
+func (u UI) MarkdownEnabled() bool { return u.Markdown == nil || *u.Markdown }
 
 // MouseEnabled reports whether the mouse is captured.
 func (u UI) MouseEnabled() bool { return u.Mouse == nil || *u.Mouse }

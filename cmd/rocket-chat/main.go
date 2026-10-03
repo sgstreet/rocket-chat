@@ -16,6 +16,9 @@ import (
 	"syscall"
 	"text/tabwriter"
 
+	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/term"
+
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
@@ -52,6 +55,11 @@ type env struct {
 	// readSecret prompts on the terminal and reads a line without echoing
 	// it; nil when stdin is not a terminal.
 	readSecret func(ctx context.Context, prompt string) (string, error)
+	// termWidth returns stdout's width in columns, or 0 when unknown.
+	termWidth func() int
+	// darkBackground reports whether the terminal background is dark; it
+	// is only asked when --render needs to pick a style.
+	darkBackground func() bool
 }
 
 func main() {
@@ -64,6 +72,18 @@ func main() {
 		stdoutIsTerminal: isTerminal(os.Stdout),
 		stderrIsTerminal: isTerminal(os.Stderr),
 		readSecret:       terminalSecretReader(os.Stdin, os.Stderr),
+		termWidth: func() int {
+			if w, _, err := term.GetSize(os.Stdout.Fd()); err == nil {
+				return w
+			}
+			return 0
+		},
+		darkBackground: func() bool {
+			if isTerminal(os.Stdin) && isTerminal(os.Stdout) {
+				return lipgloss.HasDarkBackground(os.Stdin, os.Stdout)
+			}
+			return true
+		},
 	})
 	stop()
 	os.Exit(code)
@@ -74,6 +94,7 @@ type options struct {
 	configPath, resume, role       string
 	setKey, removeKey              string
 	search, thinking, verbose      bool
+	render                         bool
 	showVersion, listBackends      bool
 	listModels, listRoles          bool
 	showRole                       string
@@ -113,6 +134,7 @@ Flags:
 	}
 	fs.BoolVar(&o.search, "search", false, "enable or disable web search, e.g. --search=false (default from backend config)")
 	fs.BoolVar(&o.thinking, "thinking", false, "show the model's reasoning on stderr")
+	fs.BoolVar(&o.render, "render", false, "print the answer as rendered Markdown (styles, wrapping, code highlighting)\nonce it is complete, instead of streaming the raw text")
 	fs.StringVar(&o.resume, "resume", "", `continue a saved chat: "last" or a session ID`)
 	fs.StringVar(&o.configPath, "config", "", "config file (default $"+config.EnvConfigPath+" or the user config directory)")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
@@ -256,6 +278,7 @@ Flags:
 			return fail(e, err)
 		}
 		opts.Mouse = cfg.UI.MouseEnabled()
+		opts.PlainReplies = !cfg.UI.MarkdownEnabled()
 		if cfg.UI.HistoryEnabled() {
 			// Without a history file the chat still has this run's inputs.
 			if path, err := store.DefaultHistoryPath(); err == nil {
@@ -309,6 +332,18 @@ Flags:
 		thinking:    o.thinking,
 		verbose:     o.verbose,
 		buffer:      b.Capabilities().InlineCitations && !e.stdoutIsTerminal,
+		render:      o.render,
+	}
+	if o.render {
+		if shot.style, err = renderStyle(cfg.UI, e); err != nil {
+			return fail(e, err)
+		}
+		shot.width = 80
+		if e.termWidth != nil {
+			if w := e.termWidth(); w > 0 {
+				shot.width = w
+			}
+		}
 	}
 	if err := shot.run(ctx, b, req); err != nil {
 		if ctx.Err() != nil && errors.Is(err, ctx.Err()) {
@@ -318,6 +353,19 @@ Flags:
 		return fail(e, err)
 	}
 	return exitOK
+}
+
+// renderStyle picks the Markdown style for --render: ui.theme, or the
+// terminal's background when the theme is auto.
+func renderStyle(ui config.UI, e env) (string, error) {
+	theme, err := ui.ThemeName()
+	if err != nil || theme != "" {
+		return theme, err
+	}
+	if e.darkBackground != nil && !e.darkBackground() {
+		return "light", nil
+	}
+	return "dark", nil
 }
 
 func listModels(ctx context.Context, b backend.Backend, e env) int {
