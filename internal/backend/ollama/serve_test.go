@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"testing"
@@ -32,6 +34,8 @@ const fakeModeEnv = "ROCKET_CHAT_FAKE_OLLAMA"
 const fakeStateEnv = "ROCKET_CHAT_FAKE_OLLAMA_STATE"
 
 func TestMain(m *testing.M) {
+	// The test binary is also the supervisor rocket-chat starts.
+	RunSupervisorIfAsked()
 	if mode := os.Getenv(fakeModeEnv); mode != "" {
 		runFakeOllama(mode)
 		return
@@ -102,7 +106,8 @@ func fakeServe(t *testing.T, mode string) (ServeSettings, string) {
 	state := t.TempDir()
 	t.Setenv(fakeModeEnv, mode)
 	t.Setenv(fakeStateEnv, state)
-	t.Setenv("XDG_CACHE_HOME", t.TempDir()) // the server log goes here
+	t.Setenv("XDG_CACHE_HOME", t.TempDir())  // the server log goes here
+	t.Setenv("XDG_RUNTIME_DIR", t.TempDir()) // and the registry here
 	return ServeSettings{Command: exe, StartTimeout: config.Duration(10 * time.Second)}, state
 }
 
@@ -273,5 +278,109 @@ func TestIsLocal(t *testing.T) {
 		if got := isLocal(u); got != want {
 			t.Errorf("isLocal(%s) = %v, want %v", raw, got, want)
 		}
+	}
+}
+
+func TestSharedServerStopsWithLastUser(t *testing.T) {
+	serve, state := fakeServe(t, "serve")
+	host := freeHost(t)
+	first := newBackend(t, Settings{Host: host, Serve: serve})
+	if _, notices, err := collectChat(t, first); err != nil || len(notices) != 1 {
+		t.Fatalf("first: notices %v, err %v", notices, err)
+	}
+	pid := fakePid(t, state)
+
+	// A second copy uses the running server rather than starting one.
+	second := newBackend(t, Settings{Host: host, Serve: serve})
+	if _, notices, err := collectChat(t, second); err != nil || len(notices) != 0 {
+		t.Fatalf("second: notices %v, err %v", notices, err)
+	}
+	if got := fakePid(t, state); got != pid {
+		t.Fatalf("second copy started another server (pid %d, then %d)", pid, got)
+	}
+
+	// The copy that started the server exits; the other still uses it.
+	if err := first.Close(); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(3 * superviseInterval)
+	if processGone(pid) {
+		t.Fatal("server stopped while another copy uses it")
+	}
+	if text, _, err := collectChat(t, second); err != nil || text != "hello from fake" {
+		t.Fatalf("second after first exits: %q, %v", text, err)
+	}
+
+	// The last copy out stops it.
+	if err := second.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !processGone(pid) {
+		t.Errorf("server %d still running after the last copy exits", pid)
+	}
+	if _, err := os.Stat(filepath.Join(state, "stopped")); err != nil {
+		t.Error("server was not stopped with SIGTERM")
+	}
+}
+
+func TestServerStopsWhenItsUserDies(t *testing.T) {
+	serve, state := fakeServe(t, "serve")
+	host := freeHost(t)
+	b := newBackend(t, Settings{Host: host, Serve: serve})
+	if _, _, err := collectChat(t, b); err != nil {
+		t.Fatal(err)
+	}
+	pid := fakePid(t, state)
+
+	// Stand in for a copy that crashed: its pid no longer runs.
+	dead := exec.Command("true")
+	if err := dead.Run(); err != nil {
+		t.Skip("cannot run true:", err)
+	}
+	u, _ := url.Parse(host)
+	path, err := registryPath(u)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = updateRegistry(path, func(r *registry) {
+		r.Users = map[string][]string{fmt.Sprintf("%d-1", dead.Process.Pid): {"fake:1b"}}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 100 && !processGone(pid); i++ {
+		time.Sleep(50 * time.Millisecond)
+	}
+	if !processGone(pid) {
+		t.Fatalf("server %d still running with no live users", pid)
+	}
+	if _, err := os.Stat(path); !os.IsNotExist(err) {
+		t.Errorf("registry left behind: %v", err)
+	}
+}
+
+func TestUnloadLeavesModelsOthersUse(t *testing.T) {
+	fs := newFakeServer(t, standardChunks...)
+	a := newBackend(t, Settings{Host: fs.URL})
+	b := newBackend(t, Settings{Host: fs.URL})
+	chat := func(be *Backend, model string) {
+		for range be.Chat(t.Context(), backend.Request{Model: model, Messages: helloReq.Messages}) {
+		}
+	}
+	chat(a, "qwen3")
+	chat(b, "qwen3")
+	chat(b, "llama3")
+
+	if err := b.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"llama3"}; !slices.Equal(fs.unloaded, want) {
+		t.Errorf("unloaded %q while another copy uses qwen3, want %q", fs.unloaded, want)
+	}
+	if err := a.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"llama3", "qwen3"}; !slices.Equal(fs.unloaded, want) {
+		t.Errorf("unloaded %q, want %q", fs.unloaded, want)
 	}
 }
