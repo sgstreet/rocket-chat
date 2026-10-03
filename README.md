@@ -41,6 +41,13 @@ directory (`~/.config` on Linux). `ROCKET_CHAT_BACKEND` overrides `default_backe
 ```yaml
 default_backend: ollama
 backends:
-  fake:
-    delay: 50ms
+  ollama:
+    host: http://127.0.0.1:11434   # default: $OLLAMA_HOST, then 127.0.0.1:11434
+    model: qwen3:4b                # used when -m is not given
+    temperature: 0.7               # optional; model default otherwise
+    num_ctx: 32768                 # optional context window
+    keep_alive: 10m                # optional; how long the model stays loaded
+    think: false                   # optional; omit to use the model's default
 ```
+
+`rocket-chat --list-models` lists the models installed on the Ollama server.
