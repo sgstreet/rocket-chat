@@ -57,7 +57,17 @@ type UI struct {
 	// Theme is "auto" (default, follows the terminal background), "dark"
 	// or "light".
 	Theme string `json:"theme"`
+	// Mouse turns on mouse wheel scrolling (default on).
+	Mouse *bool `json:"mouse"`
+	// History saves typed inputs between runs for Up/Down (default on).
+	History *bool `json:"history"`
 }
+
+// MouseEnabled reports whether the mouse is captured.
+func (u UI) MouseEnabled() bool { return u.Mouse == nil || *u.Mouse }
+
+// HistoryEnabled reports whether typed inputs are saved.
+func (u UI) HistoryEnabled() bool { return u.History == nil || *u.History }
 
 // ThemeName returns "dark", "light", or "" for auto.
 func (u UI) ThemeName() (string, error) {

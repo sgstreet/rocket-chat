@@ -1,0 +1,266 @@
+package tui
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+	"testing"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/sgstreet/rocket-chat/internal/backend"
+	"github.com/sgstreet/rocket-chat/internal/backend/fake"
+)
+
+// memHistory is an in-memory History.
+type memHistory struct{ entries []string }
+
+func (h *memHistory) Entries() []string { return slices.Clone(h.entries) }
+
+func (h *memHistory) Add(e string) error {
+	h.entries = append(h.entries, e)
+	return nil
+}
+
+func press(k string) tea.KeyPressMsg {
+	switch k {
+	case "up":
+		return tea.KeyPressMsg{Code: tea.KeyUp}
+	case "down":
+		return tea.KeyPressMsg{Code: tea.KeyDown}
+	case "tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab}
+	case "shift+tab":
+		return tea.KeyPressMsg{Code: tea.KeyTab, Mod: tea.ModShift}
+	case "ctrl+p":
+		return tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl}
+	case "ctrl+n":
+		return tea.KeyPressMsg{Code: 'n', Mod: tea.ModCtrl}
+	}
+	r := []rune(k)[0]
+	return tea.KeyPressMsg{Code: r, Text: k}
+}
+
+func TestHistoryBrowseAndEdit(t *testing.T) {
+	store := &memHistory{entries: []string{"old question"}}
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", History: store})
+
+	h.typeAndSend("first")
+	h.typeAndSend("/role technical")
+	if !slices.Equal(store.entries, []string{"old question", "first", "/role technical"}) {
+		t.Fatalf("saved %q", store.entries)
+	}
+
+	h.m.input.SetValue("draft")
+	h.send(press("up"))
+	if h.m.input.Value() != "/role technical" {
+		t.Fatalf("up = %q", h.m.input.Value())
+	}
+	h.send(press("up"))
+	h.send(press("up"))
+	if h.m.input.Value() != "old question" {
+		t.Fatalf("up x3 = %q", h.m.input.Value())
+	}
+	h.send(press("up")) // already at the oldest
+	if h.m.input.Value() != "old question" {
+		t.Errorf("past the oldest = %q", h.m.input.Value())
+	}
+
+	// Edit a recalled entry, move away and back: the edit is kept.
+	h.m.input.InsertString("!")
+	h.send(press("down"))
+	if h.m.input.Value() != "first" {
+		t.Errorf("down = %q", h.m.input.Value())
+	}
+	h.send(press("ctrl+p"))
+	if h.m.input.Value() != "old question!" {
+		t.Errorf("edit lost: %q", h.m.input.Value())
+	}
+	// Down past the newest restores the draft.
+	for range 3 {
+		h.send(press("ctrl+n"))
+	}
+	if h.m.input.Value() != "draft" {
+		t.Errorf("draft = %q", h.m.input.Value())
+	}
+
+	// Sending an edited entry adds it; the original stays as it was.
+	h.send(press("up"))
+	h.send(press("up"))
+	h.m.input.InsertString("?")
+	h.send(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if got := store.entries[len(store.entries)-1]; got != "first?" || store.entries[1] != "first" {
+		t.Errorf("entries after edit: %q", store.entries)
+	}
+	if h.m.hist.pos != -1 {
+		t.Error("still browsing after sending")
+	}
+}
+
+func TestHistoryMultilineInput(t *testing.T) {
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", History: &memHistory{entries: []string{"earlier"}}})
+	h.m.input.SetValue("line one\nline two")
+	// The cursor is on the last line: Up moves it rather than recalling.
+	// (Update only: the textarea's cursor blink would never settle.)
+	h.m.Update(press("up"))
+	if h.m.input.Value() != "line one\nline two" || h.m.input.Line() != 0 {
+		t.Fatalf("value %q line %d", h.m.input.Value(), h.m.input.Line())
+	}
+	h.send(press("up"))
+	if h.m.input.Value() != "earlier" {
+		t.Errorf("up on the first line = %q", h.m.input.Value())
+	}
+	h.send(press("down"))
+	if h.m.input.Value() != "line one\nline two" {
+		t.Errorf("draft not restored: %q", h.m.input.Value())
+	}
+}
+
+func TestHistorySkipsKeys(t *testing.T) {
+	for text, keep := range map[string]bool{
+		"/key gemini":         true,
+		"/key gemini clear":   true,
+		"/key gemini AIzaXYZ": false,
+		"/keys ollama sk-1 2": false,
+		"/key gemini clear x": false,
+		"how do keys work?":   true,
+		"   ":                 false,
+		"/model qwen3:4b":     true,
+	} {
+		if got := worthKeeping(text); got != keep {
+			t.Errorf("worthKeeping(%q) = %v", text, got)
+		}
+	}
+	store := &memHistory{}
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", History: store, Keys: &memKeys{saved: map[string]string{}}})
+	h.typeAndSend("/key a secret123")
+	if len(store.entries) != 0 || len(h.m.hist.entries) != 0 {
+		t.Errorf("key kept in history: %q", store.entries)
+	}
+}
+
+type failingHistory struct{ memHistory }
+
+func (failingHistory) Add(string) error { return fmt.Errorf("disk full") }
+
+func TestHistorySaveError(t *testing.T) {
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", History: &failingHistory{}})
+	h.typeAndSend("/thinking")
+	h.typeAndSend("/thinking")
+	errs := 0
+	for _, e := range h.m.entries {
+		if e.kind == entryError && strings.Contains(e.text, "disk full") {
+			errs++
+		}
+	}
+	if errs != 1 {
+		t.Errorf("%d history errors shown, want 1", errs)
+	}
+	h.send(press("up"))
+	if h.m.input.Value() != "/thinking" {
+		t.Errorf("unsaved entry not kept in memory: %q", h.m.input.Value())
+	}
+}
+
+func TestTabCompletion(t *testing.T) {
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}, "gemini": {}}, Options{Backend: "fake", Keys: &memKeys{saved: map[string]string{}}})
+	tab := func(start string, keys ...string) string {
+		h.m.input.SetValue(start)
+		h.m.compl = nil
+		for _, k := range keys {
+			h.send(press(k))
+		}
+		return h.m.input.Value()
+	}
+
+	if got := tab("/ba", "tab"); got != "/backend " {
+		t.Errorf("/ba = %q", got)
+	}
+	if got := tab("/backend g", "tab"); got != "/backend gemini " {
+		t.Errorf("/backend g = %q", got)
+	}
+	if got := tab("/role show te", "tab"); got != "/role show technical " {
+		t.Errorf("/role show te = %q", got)
+	}
+	// Several matches with nothing more in common: Tab cycles through them.
+	if got := tab("/search o", "tab"); got != "/search on" || !strings.Contains(h.view(), "tab: [on]  off") {
+		t.Errorf("/search o = %q; view:\n%s", got, h.view())
+	}
+	if got := tab("/search o", "tab", "tab"); got != "/search off" {
+		t.Errorf("cycle = %q", got)
+	}
+	if got := tab("/search o", "tab", "tab", "tab"); got != "/search on" {
+		t.Errorf("cycle twice = %q", got)
+	}
+	if got := tab("/search o", "shift+tab"); got != "/search off" {
+		t.Errorf("shift+tab = %q", got)
+	}
+	if got := tab("/r", "tab", "tab"); got != "/retry" || !strings.Contains(h.view(), "role  [retry]  resume") {
+		t.Errorf("/r tab tab = %q; view:\n%s", got, h.view())
+	}
+	if got := tab("/key a ", "tab"); got != "/key a clear " {
+		t.Errorf("/key a = %q", got)
+	}
+	if got := tab("/zzz", "tab"); got != "/zzz" || !strings.Contains(h.view(), "no completions") {
+		t.Errorf("/zzz = %q", got)
+	}
+	// Typing anything else ends the completion and its hint.
+	h.m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
+	if h.m.complHint != "" || strings.Contains(h.view(), "no completions") {
+		t.Error("hint not cleared")
+	}
+	// Not a command: Tab is left to the input box.
+	h.m.input.SetValue("hello")
+	if _, handled := h.m.handleKey(press("tab")); handled || h.m.complHint != "" {
+		t.Error("Tab completed plain text")
+	}
+
+	// /model completes from the last /model list.
+	h.m.models = []backend.ModelInfo{{Name: "qwen3:4b"}, {Name: "qwen3:0.6b"}, {Name: "llama3.2"}}
+	if got := tab("/model ll", "tab"); got != "/model llama3.2 " {
+		t.Errorf("/model ll = %q", got)
+	}
+	// A shared prefix is filled in first, then Tab cycles.
+	if got := tab("/model q", "tab"); got != "/model qwen3:" || !strings.Contains(h.view(), "tab: qwen3:4b  qwen3:0.6b") {
+		t.Errorf("/model q = %q", got)
+	}
+	if got := tab("/model q", "tab", "tab"); got != "/model qwen3:4b" {
+		t.Errorf("/model q tab tab = %q", got)
+	}
+}
+
+func TestMouse(t *testing.T) {
+	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", Mouse: true})
+	if h.m.View().MouseMode != tea.MouseModeCellMotion {
+		t.Fatal("mouse not captured")
+	}
+	for i := range 40 {
+		h.m.notice("line %d", i)
+	}
+	bottom := h.m.viewport.YOffset()
+	h.send(tea.MouseWheelMsg{Button: tea.MouseWheelUp})
+	if h.m.viewport.YOffset() >= bottom {
+		t.Errorf("wheel up did not scroll: %d -> %d", bottom, h.m.viewport.YOffset())
+	}
+	h.send(tea.MouseWheelMsg{Button: tea.MouseWheelDown})
+	if h.m.viewport.YOffset() != bottom {
+		t.Errorf("wheel down: %d, want %d", h.m.viewport.YOffset(), bottom)
+	}
+
+	h.typeAndSend("/mouse off")
+	if h.m.View().MouseMode != tea.MouseModeNone || !strings.Contains(h.last(entryNotice).text, "select text") {
+		t.Error("/mouse off")
+	}
+	h.typeAndSend("/mouse")
+	if !strings.Contains(h.last(entryNotice).text, "Mouse is off") {
+		t.Error("/mouse status")
+	}
+	h.typeAndSend("/mouse on")
+	if h.m.View().MouseMode != tea.MouseModeCellMotion {
+		t.Error("/mouse on")
+	}
+	h.typeAndSend("/mouse sideways")
+	if !strings.Contains(h.last(entryError).text, "/mouse on or /mouse off") {
+		t.Error("bad /mouse argument")
+	}
+}

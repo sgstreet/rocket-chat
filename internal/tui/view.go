@@ -196,9 +196,16 @@ func (m *model) statusLine() string {
 }
 
 func (m *model) helpLine() string {
-	help := " enter send · alt+enter newline · pgup/pgdn scroll · ctrl+t thinking · /help · ctrl+c quit"
-	if m.keyFor != "" {
+	var help string
+	switch {
+	case m.keyFor != "":
 		help = " enter save the key · esc cancel"
+	case m.complHint != "":
+		help = " tab: " + m.complHint
+	case m.mouse:
+		help = " enter send · alt+enter newline · ↑↓ history · tab complete · wheel scrolls · /help · ctrl+c quit"
+	default:
+		help = " enter send · alt+enter newline · ↑↓ history · tab complete · pgup/pgdn scroll · /help · ctrl+c quit"
 	}
 	return st.dim.MaxWidth(m.width).Render(help)
 }

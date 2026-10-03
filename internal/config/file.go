@@ -36,7 +36,9 @@ const DefaultFile = `{
     "save": true
   },
   "ui": {
-    "theme": "auto"
+    "theme": "auto",
+    "mouse": true,
+    "history": true
   },
   "roles": {}
 }
