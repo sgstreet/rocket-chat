@@ -28,6 +28,26 @@ type Config struct {
 	Backends map[string]yaml.Node `yaml:"backends"`
 	// Sessions controls saving interactive chats.
 	Sessions Sessions `yaml:"sessions"`
+	// UI configures the interactive chat.
+	UI UI `yaml:"ui"`
+}
+
+// UI is the ui config section.
+type UI struct {
+	// Theme is "auto" (default, follows the terminal background), "dark"
+	// or "light".
+	Theme string `yaml:"theme"`
+}
+
+// ThemeName returns "dark", "light", or "" for auto.
+func (u UI) ThemeName() (string, error) {
+	switch u.Theme {
+	case "", "auto":
+		return "", nil
+	case "dark", "light":
+		return u.Theme, nil
+	}
+	return "", fmt.Errorf("ui.theme must be auto, dark or light, not %q", u.Theme)
 }
 
 // Sessions is the sessions config section.

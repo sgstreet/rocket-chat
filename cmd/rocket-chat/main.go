@@ -163,6 +163,9 @@ Flags:
 		if err := sessionOptions(cfg.Sessions, o, &opts); err != nil {
 			return fail(e, err)
 		}
+		if opts.Theme, err = cfg.UI.ThemeName(); err != nil {
+			return fail(e, err)
+		}
 		err := tui.Run(ctx, opts)
 		switch {
 		case ctx.Err() != nil:

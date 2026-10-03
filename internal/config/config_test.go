@@ -91,3 +91,14 @@ func TestPathFromEnv(t *testing.T) {
 		t.Errorf("Path() = %q, %v", p, err)
 	}
 }
+
+func TestThemeName(t *testing.T) {
+	for in, want := range map[string]string{"": "", "auto": "", "dark": "dark", "light": "light"} {
+		if got, err := (UI{Theme: in}).ThemeName(); err != nil || got != want {
+			t.Errorf("ThemeName(%q) = %q, %v", in, got, err)
+		}
+	}
+	if _, err := (UI{Theme: "neon"}).ThemeName(); err == nil {
+		t.Error("bad theme accepted")
+	}
+}
