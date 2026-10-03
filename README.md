@@ -68,7 +68,8 @@ A role is a named system prompt. Three are built in:
 
 Use one with `rocket-chat --role technical "question"` (or `-r`; display names such as
 `"Technical Adviser"` work too), or `/role technical` in the chat. `/role` lists them, `/role off`
-removes the role, and `--list-roles` prints them. `-s "text"` and `/system text` still set a custom
+removes the role, and `--list-roles` prints them. `/system` on its own shows the current prompt and
+lists the available ones. `-s "text"` and `/system text` still set a custom
 system prompt instead. Saved chats remember their role.
 
 Add your own, or replace a built-in by reusing its ID, in `config.json`. Long prompts can live in a

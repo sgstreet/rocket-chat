@@ -26,8 +26,20 @@ func TestRoleCommand(t *testing.T) {
 		}
 	}
 
+	h.typeAndSend("/system")
+	list = h.last(entryNotice).text
+	for _, want := range []string{"No system prompt.", "Available prompts", "general", "Technical Adviser", "Research Assistant"} {
+		if !strings.Contains(list, want) {
+			t.Errorf("/system missing %q:\n%s", want, list)
+		}
+	}
+
 	h.typeAndSend("/role Technical Adviser")
 	tech, _ := roles.Builtin().Find("technical")
+	h.typeAndSend("/system")
+	if list := h.last(entryNotice).text; !strings.Contains(list, "role Technical Adviser") || !strings.Contains(list, "* technical") {
+		t.Errorf("/system with a role:\n%s", list)
+	}
 	if h.m.role != "technical" || h.m.system != tech.Prompt {
 		t.Fatalf("role %q system %q", h.m.role, h.m.system)
 	}
@@ -56,6 +68,10 @@ func TestRoleCommand(t *testing.T) {
 	}
 
 	h.typeAndSend("/system be terse")
+	h.typeAndSend("/system")
+	if list := h.last(entryNotice).text; !strings.Contains(list, "(custom): be terse") || strings.Contains(list, "*") {
+		t.Errorf("/system with a custom prompt:\n%s", list)
+	}
 	if h.m.role != "" || !strings.Contains(h.view(), "custom system prompt") {
 		t.Errorf("custom prompt should clear the role (role %q)", h.m.role)
 	}
