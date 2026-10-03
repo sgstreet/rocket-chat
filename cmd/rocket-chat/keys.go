@@ -71,16 +71,29 @@ func checkKey(key string) error {
 	return nil
 }
 
-// setKey implements --set-key: the key comes from piped stdin, or from a
-// hidden prompt on the terminal.
-func setKey(ctx context.Context, e env, keys *keyStore, name string) int {
-	info, ok := backend.Key(name)
+// setKey implements --set-key. arg is normally a backend name, and the key
+// comes from piped stdin or a hidden terminal prompt. With -b naming the
+// backend, arg may instead be the key itself. arg is never echoed unless it
+// is a backend name, since it may be a key.
+func setKey(ctx context.Context, e env, keys *keyStore, arg, backendFlag string) int {
+	name, given := arg, ""
+	info, ok := backend.Key(arg)
 	if !ok {
-		fmt.Fprintf(e.stderr, "rocket-chat: %s takes no API key (backends with keys: %s)\n", name, strings.Join(backend.KeyNames(), ", "))
-		return exitUsage
+		if backendFlag == "" {
+			fmt.Fprintf(e.stderr, "rocket-chat: --set-key takes a backend name (%s), or the key itself together with -b <backend>\n",
+				strings.Join(backend.KeyNames(), ", "))
+			return exitUsage
+		}
+		name, given = backendFlag, arg
+		if info, ok = backend.Key(name); !ok {
+			fmt.Fprintf(e.stderr, "rocket-chat: %s takes no API key (backends with keys: %s)\n", name, strings.Join(backend.KeyNames(), ", "))
+			return exitUsage
+		}
 	}
-	var key string
+	key := given
 	switch {
+	case given != "":
+		// The key was the flag's value.
 	case e.stdinIsInput && e.stdin != nil:
 		data, err := readAll(ctx, e.stdin)
 		if err != nil {
@@ -108,6 +121,10 @@ func setKey(ctx context.Context, e env, keys *keyStore, name string) int {
 		return fail(e, err)
 	}
 	fmt.Fprintf(e.stdout, "Saved the %s API key in %s.\n", name, keys.path)
+	if given != "" {
+		fmt.Fprintf(e.stderr, "rocket-chat: note: a key typed on the command line stays in your shell history; "+
+			"`rocket-chat --set-key %s` asks for it without showing it\n", name)
+	}
 	if env := keys.Overridden(name); env != "" {
 		fmt.Fprintf(e.stderr, "rocket-chat: note: %s is set and takes precedence over the saved key\n", env)
 	}
@@ -117,7 +134,7 @@ func setKey(ctx context.Context, e env, keys *keyStore, name string) int {
 // removeKey implements --remove-key.
 func removeKey(e env, keys *keyStore, name string) int {
 	if _, ok := backend.Key(name); !ok {
-		fmt.Fprintf(e.stderr, "rocket-chat: %s takes no API key (backends with keys: %s)\n", name, strings.Join(backend.KeyNames(), ", "))
+		fmt.Fprintf(e.stderr, "rocket-chat: --remove-key takes a backend name (%s)\n", strings.Join(backend.KeyNames(), ", "))
 		return exitUsage
 	}
 	if keys.cfg.APIKey(name) == "" {

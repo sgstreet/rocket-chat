@@ -118,7 +118,7 @@ Flags:
 	fs.BoolVar(&o.listBackends, "list-backends", false, "print the available backends and exit")
 	fs.BoolVar(&o.listModels, "list-models", false, "print the selected backend's models and exit")
 	fs.BoolVar(&o.listRoles, "list-roles", false, "print the available roles and exit")
-	fs.StringVar(&o.setKey, "set-key", "", "save an API key for a backend in the config file and exit;\nthe key is read from stdin or prompted for (backends: "+strings.Join(backend.KeyNames(), ", ")+")")
+	fs.StringVar(&o.setKey, "set-key", "", "save a backend's API key in the config file and exit: --set-key gemini reads the key\nfrom stdin or a hidden prompt; -b gemini --set-key KEY takes it directly (backends: "+strings.Join(backend.KeyNames(), ", ")+")")
 	fs.StringVar(&o.removeKey, "remove-key", "", "remove a backend's saved API key from the config file and exit")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -150,7 +150,7 @@ Flags:
 		fmt.Fprintln(e.stderr, "rocket-chat: give either --set-key or --remove-key, not both")
 		return exitUsage
 	case o.setKey != "":
-		return setKey(ctx, e, keys, o.setKey)
+		return setKey(ctx, e, keys, o.setKey, o.backend)
 	case o.removeKey != "":
 		return removeKey(e, keys, o.removeKey)
 	}
