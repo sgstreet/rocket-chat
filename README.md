@@ -28,11 +28,22 @@ make lint         # go vet + golangci-lint
 
 Run `rocket-chat` with no prompt for the interactive chat:
 
-- Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn scroll,
-  Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
+- Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn or the mouse
+  wheel scroll, Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
+- Up and Down (or Ctrl+P and Ctrl+N) recall earlier inputs, messages and commands alike, from this
+  and earlier chats. A recalled input can be edited before sending; edits are kept while you move
+  through the list, and Down past the newest entry brings back what you were typing. In a
+  multi-line input, Up and Down move between lines first.
+- Tab completes commands and their arguments: `/ba` → `/backend `, `/role show te` →
+  `/role show technical`, `/backend `, `/model ` (after `/model` has listed the models), `/search `,
+  `/key `, `/mouse `. With several matches the bottom line lists them and Tab (Shift+Tab backwards)
+  cycles through them.
+- With the mouse on, most terminals need Shift held to select text or click a link. `/mouse off`
+  hands the mouse back to the terminal for the rest of the chat; `"ui": {"mouse": false}` makes that
+  the default.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/role`, `/system`, `/search on|off|default`, `/key`, `/thinking`, `/retry`, `/new`, `/sessions`,
-  `/resume`, `/export`, `/copy`, `/quit`.
+  `/role`, `/system`, `/search on|off|default`, `/key`, `/mouse on|off`, `/thinking`, `/retry`, `/new`,
+  `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
   `set -g set-clipboard on`.
@@ -74,6 +85,11 @@ If `$XDG_DATA_HOME` is set, the directory is `$XDG_DATA_HOME/rocket-chat/session
   current chat as Markdown. `rocket-chat --resume last` (or a session ID) reopens one from the
   command line; `-b`, `-m` and `-s` override its saved backend, model and system prompt.
 - To delete a chat, delete its file. To stop saving, set `"sessions": {"save": false}`.
+
+What you type in the chat (for Up/Down) is kept separately, in `~/.local/share/rocket-chat/history`
+(next to `sessions/`, mode 600, the newest 1000 entries). Delete the file to clear it, or set
+`"ui": {"history": false}` to keep inputs only for the current chat. A `/key` command with a key in
+it is refused and never recorded.
 
 ## Roles
 
@@ -182,6 +198,8 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 |---|---|---|
 | `default_backend` | `ollama` | Backend used when `-b` is not given |
 | `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
+| `ui.mouse` | `true` | Mouse wheel scrolling; Shift selects text while it is on |
+| `ui.history` | `true` | Save typed inputs for Up/Down between chats |
 | `sessions.save` | `true` | Save interactive chats |
 | `sessions.dir` | `~/.local/share/rocket-chat/sessions` (or `$XDG_DATA_HOME/rocket-chat/sessions`) | Where chats are saved; `~` is expanded |
 

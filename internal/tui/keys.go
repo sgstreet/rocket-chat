@@ -41,9 +41,11 @@ func (m *model) keyCommand(arg string) tea.Cmd {
 		m.input.Blur()
 		m.notice("Paste the %s API key and press Enter; it is hidden as you type. Esc cancels.", name)
 		return m.keyInput.Focus()
-	case "clear", "remove", "delete", "off":
-		m.saveKey(name, "")
 	default:
+		if isKeyClear(rest) {
+			m.saveKey(name, "")
+			return nil
+		}
 		// Never echo or keep a key typed on the command line.
 		m.errorf("Type /key %s on its own, then paste the key at the hidden prompt.", name)
 	}

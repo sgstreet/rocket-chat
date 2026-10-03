@@ -48,6 +48,12 @@ type Options struct {
 	Role string
 	// Keys reads and saves API keys for /key; nil turns the command off.
 	Keys Keys
+	// History keeps typed inputs between runs; nil keeps them only for
+	// this chat.
+	History History
+	// Mouse turns on mouse wheel scrolling. While it is on, the terminal
+	// needs Shift held to select text or click links.
+	Mouse bool
 }
 
 // Keys reads and saves backends' API keys.
@@ -111,11 +117,22 @@ type model struct {
 	// keyFor, so the key is never shown.
 	keyInput textinput.Model
 	keyFor   string
-	spinner  spinner.Model
-	width    int
-	height   int
-	dark     bool
-	md       *markdown
+
+	// hist browses earlier inputs with Up and Down.
+	hist *inputHistory
+	// histFailed stops repeating the same history save error.
+	histFailed bool
+	// compl is the Tab completion in progress; complHint lists its
+	// candidates in the help line.
+	compl     *completion
+	complHint string
+	// mouse reports whether mouse events are captured.
+	mouse   bool
+	spinner spinner.Model
+	width   int
+	height  int
+	dark    bool
+	md      *markdown
 
 	// Streaming state. gen identifies the current reply; events from
 	// older replies are ignored.
@@ -149,6 +166,8 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 
 	m := &model{
 		keyInput:    keyIn,
+		hist:        newInputHistory(opts.History),
+		mouse:       opts.Mouse,
 		ctx:         ctx,
 		opts:        opts,
 		backendName: opts.Backend,
@@ -221,6 +240,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
 
+	case tea.MouseWheelMsg:
+		var cmd tea.Cmd
+		m.viewport, cmd = m.viewport.Update(msg)
+		return m, cmd
+
 	case tea.KeyPressMsg:
 		if m.keyFor != "" {
 			return m, m.handleKeyEntry(msg)
@@ -246,7 +270,29 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
-	switch msg.String() {
+	k := msg.String()
+	if k != "tab" && k != "shift+tab" {
+		m.compl, m.complHint = nil, ""
+	}
+	switch k {
+	case "tab":
+		return nil, m.complete(1)
+	case "shift+tab":
+		return nil, m.complete(-1)
+	case "up", "ctrl+p":
+		if k == "ctrl+p" || m.onFirstRow() {
+			if text, ok := m.hist.prev(m.input.Value()); ok {
+				m.input.SetValue(text)
+			}
+			return nil, true
+		}
+	case "down", "ctrl+n":
+		if k == "ctrl+n" || m.onLastRow() {
+			if text, ok := m.hist.next(m.input.Value()); ok {
+				m.input.SetValue(text)
+			}
+			return nil, true
+		}
 	case "ctrl+c":
 		if m.streaming {
 			m.cancelReply()
@@ -294,6 +340,7 @@ func (m *model) submit() tea.Cmd {
 	}
 	if strings.HasPrefix(text, "/") {
 		m.input.Reset()
+		m.remember(text)
 		return m.command(text)
 	}
 	if m.streaming {
@@ -301,6 +348,7 @@ func (m *model) submit() tea.Cmd {
 		return nil
 	}
 	m.input.Reset()
+	m.remember(text)
 	m.entries = append(m.entries, &entry{kind: entryUser, msg: chat.Message{Role: chat.RoleUser, Text: text}})
 	return m.ask()
 }
@@ -320,8 +368,31 @@ func (m *model) View() tea.View {
 		m.helpLine(),
 	))
 	v.AltScreen = true
+	if m.mouse {
+		v.MouseMode = tea.MouseModeCellMotion
+	}
 	v.WindowTitle = "rocket-chat"
 	return v
+}
+
+// remember adds a sent input to the history.
+func (m *model) remember(text string) {
+	if err := m.hist.add(text); err != nil && !m.histFailed {
+		m.histFailed = true
+		m.errorf("Input history not saved: %v", err)
+	}
+}
+
+// onFirstRow reports whether the cursor is on the input's first screen
+// row, where Up recalls history instead of moving the cursor.
+func (m *model) onFirstRow() bool {
+	return m.input.Line() == 0 && m.input.LineInfo().RowOffset == 0
+}
+
+// onLastRow reports whether the cursor is on the input's last screen row.
+func (m *model) onLastRow() bool {
+	li := m.input.LineInfo()
+	return m.input.Line() == m.input.LineCount()-1 && li.RowOffset >= li.Height-1
 }
 
 // layout sizes the components to the window.

@@ -255,6 +255,17 @@ Flags:
 		if opts.Theme, err = cfg.UI.ThemeName(); err != nil {
 			return fail(e, err)
 		}
+		opts.Mouse = cfg.UI.MouseEnabled()
+		if cfg.UI.HistoryEnabled() {
+			// Without a history file the chat still has this run's inputs.
+			if path, err := store.DefaultHistoryPath(); err == nil {
+				if h, err := store.OpenHistory(path, 0); err != nil {
+					fmt.Fprintln(e.stderr, "rocket-chat: input history:", err)
+				} else {
+					opts.History = h
+				}
+			}
+		}
 		err := tui.Run(ctx, opts)
 		switch {
 		case ctx.Err() != nil:
