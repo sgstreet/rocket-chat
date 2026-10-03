@@ -53,7 +53,16 @@ type modelsMsg struct {
 }
 
 // command runs a slash command.
-func (m *model) command(line string) tea.Cmd {
+func (m *model) command(line string) (out tea.Cmd) {
+	// A command that moves the chat to another model or backend lets the
+	// backend free the model it leaves.
+	prevBackend, prevName, prevModel := m.b, m.backendName, m.effectiveModel()
+	defer func() {
+		if m.b != prevBackend || m.effectiveModel() != prevModel {
+			out = tea.Batch(out, m.releaseModel(prevBackend, prevName, prevModel))
+		}
+	}()
+
 	name, arg, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	arg = strings.TrimSpace(arg)
 	if m.streaming && !slices.Contains([]string{"help", "thinking", "quit", "exit", "copy"}, name) {
@@ -165,6 +174,34 @@ func (m *model) chooseModel(arg string) tea.Cmd {
 	m.modelName = arg
 	m.notice("Using model %s.", arg)
 	return nil
+}
+
+// releasedMsg reports the result of releasing a model the chat left.
+type releasedMsg struct {
+	backend, model string
+	released       bool
+	err            error
+}
+
+// releaseModel lets b free model, when it holds anything for it.
+func (m *model) releaseModel(b backend.Backend, name, model string) tea.Cmd {
+	r, ok := b.(backend.ModelReleaser)
+	if !ok || model == "" {
+		return nil
+	}
+	return func() tea.Msg {
+		released, err := r.ReleaseModel(m.ctx, model)
+		return releasedMsg{backend: name, model: model, released: released, err: err}
+	}
+}
+
+func (m *model) showReleased(msg releasedMsg) {
+	switch {
+	case msg.err != nil:
+		m.notice("Could not unload %s from %s: %v", msg.model, msg.backend, msg.err)
+	case msg.released:
+		m.notice("Unloaded %s from %s.", msg.model, msg.backend)
+	}
 }
 
 func (m *model) showModels(msg modelsMsg) {

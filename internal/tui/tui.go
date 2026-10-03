@@ -273,6 +273,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case streamMsg:
 		return m, m.handleStream(msg)
 
+	case releasedMsg:
+		m.showReleased(msg)
+		return m, nil
+
 	case modelsMsg:
 		if msg.forCompletion {
 			return m, m.modelsForCompletion(msg)

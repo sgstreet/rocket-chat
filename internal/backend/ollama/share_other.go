@@ -26,6 +26,8 @@ func (s *share) join() {}
 
 func (s *share) use(string) {}
 
+func (s *share) forget(string) []string { return nil }
+
 // start runs `ollama serve` and waits until it answers. It reports false
 // when the server that answers is not the one it started.
 func (s *share) start(ctx context.Context, settings ServeSettings, ping func(context.Context) error) (bool, error) {

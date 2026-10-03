@@ -308,6 +308,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `num_ctx` | model default | Context window in tokens |
 | `keep_alive` | Ollama default | How long the model stays loaded |
 | `unload_on_exit` | `true` | Unload the models used when rocket-chat exits, unless another running copy uses them (see below) |
+| `unload_on_switch` | `true` | Unload a model when the chat moves to another model or backend, unless another running copy uses it |
 | `think` | model default | `true`/`false` turns reasoning on or off |
 | `search.enabled` | `false` | Web search default; `--search` overrides |
 | `search.mode` | `auto` | `auto`, `direct` or `local` (see below) |
@@ -341,6 +342,12 @@ default), which can hold several GB of GPU memory, so when rocket-chat exits it 
 unload the models it chatted with. Models another running copy of rocket-chat has used stay loaded.
 Set `"unload_on_exit": false` to leave the models loaded, for example when `keep_alive` is set to
 keep them warm. `ollama ps` shows what is loaded.
+
+Switching model in a chat (`/model`, or `/resume` of a chat with another model) unloads the model
+the chat leaves, as does switching to another backend with `/backend`, so only the model in use
+holds GPU memory. A notice says when a model is unloaded. A model the chat never sent a message to,
+a cloud model, and a model another running copy of rocket-chat has used are left alone. Set
+`"unload_on_switch": false` to keep models loaded when switching.
 
 ### Ollama cloud models
 

@@ -184,6 +184,23 @@ func (s *share) use(model string) {
 	})
 }
 
+// forget records that this backend no longer uses model, and returns the
+// models the other users have used.
+func (s *share) forget(model string) []string {
+	var others []string
+	_ = s.update(func(r *registry) {
+		if models, ok := r.Users[s.id]; ok {
+			r.Users[s.id] = slices.DeleteFunc(models, func(m string) bool { return m == model })
+		}
+		for id, models := range r.Users {
+			if id != s.id {
+				others = append(others, models...)
+			}
+		}
+	})
+	return others
+}
+
 // start starts a supervised server, or waits for one another copy of
 // rocket-chat is starting, until it answers. It reports whether this
 // backend started the server that answers.
