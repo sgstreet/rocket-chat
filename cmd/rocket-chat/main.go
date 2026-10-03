@@ -207,6 +207,13 @@ Flags:
 		fmt.Fprintln(e.stderr, "rocket-chat: give either --role or -s, not both")
 		return exitUsage
 	}
+	// Only the interactive chat starts with the role last chosen with
+	// /role; one-shot answers use --role, -s or default_role, so scripts
+	// do not change with what was picked in a chat.
+	interactive := o.prompt == "" && len(fs.Args()) == 0 && !e.stdinIsInput && !o.listModels
+	if !interactive {
+		last = store.State{}
+	}
 	role, system, err := selectRole(o, cfg, lib, last)
 	if err != nil {
 		return fail(e, err)
@@ -238,7 +245,6 @@ Flags:
 		search = &o.search
 	}
 
-	interactive := o.prompt == "" && len(fs.Args()) == 0 && !e.stdinIsInput && !o.listModels
 	if o.resume != "" && !interactive {
 		fmt.Fprintln(e.stderr, "rocket-chat: --resume continues a chat interactively; it cannot be combined with a prompt")
 		return exitUsage
@@ -471,8 +477,8 @@ func loadConfig(path string, stderr io.Writer) (config.Config, string, error) {
 }
 
 // selectRole picks the system prompt a run starts with: --role or -s;
-// otherwise the role last chosen with /role; otherwise default_role, which
-// is the General Assistant when unset. It returns the role (nil for a
+// otherwise last, the role last chosen with /role (chats only pass it);
+// otherwise default_role, which is the General Assistant when unset. It returns the role (nil for a
 // custom prompt or none) and the prompt text.
 func selectRole(o options, cfg config.Config, lib *roles.Library, last store.State) (*roles.Role, string, error) {
 	find := func(name string) (*roles.Role, string, error) {

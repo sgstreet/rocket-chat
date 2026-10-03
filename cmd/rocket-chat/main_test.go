@@ -712,18 +712,19 @@ func TestListRolesMarksStartingRole(t *testing.T) {
 	}
 }
 
-func TestOneShotUsesRememberedRole(t *testing.T) {
+func TestOneShotIgnoresRememberedRole(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "state.json")
 	if err := store.SaveState(statePath, store.State{Role: store.RoleCustom, Prompt: "Be brief."}); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "config.json"))
+	gen, _ := roles.Builtin().Find("general")
 	recorder = &fake.Backend{}
 	var out, errOut bytes.Buffer
 	if code := run(t.Context(), []string{"-b", "test-record", "q"}, env{stdout: &out, stderr: &errOut, statePath: statePath}); code != exitOK {
 		t.Fatalf("exit %d: %s", code, errOut.String())
 	}
-	if got := recorder.Requests()[0].System; got != "Be brief." {
-		t.Errorf("system = %q", got)
+	if got := recorder.Requests()[0].System; got != gen.Prompt {
+		t.Errorf("one-shot used %q, want the default role's prompt", got)
 	}
 }
