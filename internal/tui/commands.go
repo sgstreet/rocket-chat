@@ -16,7 +16,8 @@ const helpText = `Commands:
   /backend [name]        show backends, or switch to one
   /model [name|number]   list models, or choose one (by name or list number)
   /role [name|off]       list roles (named system prompts), or switch role
-  /system [text|clear]   list prompts, or set or clear a custom system prompt
+  /role show [name]      print a role's full prompt (default: the current role)
+  /system [text|clear]   show the current prompt and list roles, or set or clear a custom one
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
   /thinking              show or hide the model's reasoning (also ctrl+t)
@@ -182,9 +183,9 @@ func (m *model) setSystem(arg string) {
 		var b strings.Builder
 		switch r, ok := m.roles.Find(m.role); {
 		case m.role != "" && ok:
-			b.WriteString("System prompt: role " + r.Name + ".")
+			b.WriteString("System prompt, from the role " + r.Name + ":\n\n" + m.system)
 		case m.system != "":
-			b.WriteString("System prompt (custom): " + m.system)
+			b.WriteString("System prompt (custom):\n\n" + m.system)
 		default:
 			b.WriteString("No system prompt.")
 		}
@@ -230,6 +231,10 @@ func (m *model) setRole(arg string) {
 		m.notice("No role; no system prompt.")
 		return
 	}
+	if name, ok := strings.CutPrefix(arg, "show"); ok && (name == "" || name[0] == ' ') {
+		m.showRole(strings.TrimSpace(name))
+		return
+	}
 	r, ok := m.roles.Find(arg)
 	if !ok {
 		m.errorf("No role %q. Available: %s.", arg, strings.Join(m.roles.Names(), ", "))
@@ -248,6 +253,36 @@ func (m *model) setRole(arg string) {
 		}
 	}
 	m.notice("%s", msg)
+}
+
+// showRole prints a role's full prompt; name "" means the current role.
+func (m *model) showRole(name string) {
+	if name == "" {
+		if m.role == "" {
+			m.errorf("No role is in use. Show one with /role show <name>, or see the current prompt with /system.")
+			return
+		}
+		name = m.role
+	}
+	r, ok := m.roles.Find(name)
+	if !ok {
+		m.errorf("No role %q. Available: %s.", name, strings.Join(m.roles.Names(), ", "))
+		return
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s (%s)", r.Name, r.ID)
+	if r.Description != "" {
+		b.WriteString(" — " + r.Description)
+	}
+	if r.Search != nil {
+		state := "off"
+		if *r.Search {
+			state = "on"
+		}
+		b.WriteString("\nTurns web search " + state + ".")
+	}
+	b.WriteString("\n\n" + r.Prompt)
+	m.notice("%s", b.String())
 }
 
 func (m *model) setSearch(arg string) {

@@ -528,3 +528,14 @@ func TestDefaultBackendFromConfig(t *testing.T) {
 		t.Errorf("got %+v", r)
 	}
 }
+
+func TestShowRole(t *testing.T) {
+	tech, _ := roles.Builtin().Find("technical")
+	r := cli(t, t.Context(), nil, "--show-role", "Technical Adviser")
+	if r.code != exitOK || r.out != tech.Prompt+"\n" {
+		t.Errorf("got %+v", r)
+	}
+	if r := cli(t, t.Context(), nil, "--show-role", "lawyer"); r.code != exitError || !strings.Contains(r.errOut, `unknown role "lawyer"`) {
+		t.Errorf("unknown: %+v", r)
+	}
+}
