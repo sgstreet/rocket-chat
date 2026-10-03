@@ -49,6 +49,11 @@ type Settings struct {
 	NumCtx int `json:"num_ctx"`
 	// KeepAlive is how long the model stays loaded after a request.
 	KeepAlive *config.Duration `json:"keep_alive"`
+	// UnloadOnExit unloads the models rocket-chat used when it exits, so
+	// a server it did not start frees their memory straight away rather
+	// than after keep_alive. Default true. A server rocket-chat started is
+	// stopped instead.
+	UnloadOnExit *bool `json:"unload_on_exit"`
 	// Think enables or disables reasoning for models that support it. When
 	// unset, the model's default applies.
 	Think *bool `json:"think"`
@@ -77,7 +82,14 @@ type Backend struct {
 	ready bool
 	// server is the server this backend started, stopped by Close.
 	server *localServer
+	// used holds the models chatted with, which Close unloads.
+	used []string
 }
+
+func (s Settings) unloadOnExit() bool { return s.UnloadOnExit == nil || *s.UnloadOnExit }
+
+// unloadTimeout bounds each unload request on the way out.
+const unloadTimeout = 5 * time.Second
 
 // ensureServer makes sure the server answers before a request, starting a
 // local one when it is not running and auto-start is on. It returns a
@@ -117,16 +129,54 @@ func (b *Backend) ping(ctx context.Context) error {
 }
 
 // Close stops the local server if this backend started it. A server that
-// was already running is left alone.
+// was already running is left alone, but the models used are unloaded from
+// it unless unload_on_exit is off.
 func (b *Backend) Close() error {
 	b.serveMu.Lock()
 	defer b.serveMu.Unlock()
+	used := b.used
+	b.used = nil
+	b.ready = false
 	if b.server != nil {
 		b.server.stop()
 		b.server = nil
+		return nil
 	}
-	b.ready = false
-	return nil
+	if !b.settings.unloadOnExit() {
+		return nil
+	}
+	var errs []error
+	for _, model := range used {
+		if err := b.unload(model); err != nil {
+			errs = append(errs, fmt.Errorf("unloading %s: %w", model, err))
+		}
+	}
+	return errors.Join(errs...)
+}
+
+// unload asks the server to unload model now. A server that has gone away
+// or no longer has the model has nothing to unload.
+func (b *Backend) unload(model string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), unloadTimeout)
+	defer cancel()
+	err := b.client.Generate(ctx, &api.GenerateRequest{
+		Model:     model,
+		KeepAlive: &api.Duration{Duration: 0},
+	}, func(api.GenerateResponse) error { return nil })
+	var status api.StatusError
+	if isUnreachable(err) || (errors.As(err, &status) && status.StatusCode == http.StatusNotFound) {
+		return nil
+	}
+	return err
+}
+
+// markUsed records that model was chatted with, for Close to unload.
+func (b *Backend) markUsed(model string) {
+	b.serveMu.Lock()
+	defer b.serveMu.Unlock()
+	if !slices.Contains(b.used, model) {
+		b.used = append(b.used, model)
+	}
 }
 
 // New creates a backend. A nil httpClient uses http.DefaultClient.
@@ -209,6 +259,7 @@ func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backe
 			yield(backend.Event{}, b.noModelError(ctx))
 			return
 		}
+		b.markUsed(model)
 
 		stopped := false
 		emit := func(ev backend.Event) error {

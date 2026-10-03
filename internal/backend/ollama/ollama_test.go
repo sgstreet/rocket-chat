@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -36,6 +37,8 @@ type fakeServer struct {
 
 	mu       sync.Mutex
 	requests []api.ChatRequest
+	// unloaded lists the models unload requests named.
+	unloaded []string
 }
 
 func newFakeServer(t *testing.T, chunks ...api.ChatResponse) *fakeServer {
@@ -47,11 +50,34 @@ func newFakeServer(t *testing.T, chunks ...api.ChatResponse) *fakeServer {
 		_ = json.NewEncoder(w).Encode(api.ListResponse{Models: fs.models})
 	})
 	mux.HandleFunc("POST /api/show", fs.show)
+	mux.HandleFunc("POST /api/generate", fs.generate)
 	mux.HandleFunc("POST /api/experimental/web_search", fs.webSearch)
 	mux.HandleFunc("POST /api/experimental/web_fetch", fs.webFetch)
 	fs.Server = httptest.NewServer(mux)
 	t.Cleanup(fs.Close)
 	return fs
+}
+
+// generate handles only unload requests: no prompt and keep_alive 0.
+func (fs *fakeServer) generate(w http.ResponseWriter, r *http.Request) {
+	var req api.GenerateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if req.Prompt != "" || req.KeepAlive == nil || req.KeepAlive.Duration != 0 {
+		http.Error(w, "not an unload request", http.StatusBadRequest)
+		return
+	}
+	if req.Model == "missing" {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":"model 'missing' not found"}`))
+		return
+	}
+	fs.mu.Lock()
+	fs.unloaded = append(fs.unloaded, req.Model)
+	fs.mu.Unlock()
+	_ = json.NewEncoder(w).Encode(api.GenerateResponse{Model: req.Model, Done: true, DoneReason: "unload"})
 }
 
 func (fs *fakeServer) chat(w http.ResponseWriter, r *http.Request) {
@@ -369,5 +395,52 @@ func TestLive(t *testing.T) {
 	}
 	if !strings.Contains(strings.ToLower(text.String()), "pong") {
 		t.Errorf("reply = %q", text.String())
+	}
+}
+
+func TestCloseUnloadsUsedModels(t *testing.T) {
+	no := false
+	for _, tc := range []struct {
+		name   string
+		s      Settings
+		models []string
+		want   []string
+	}{
+		{"used models", Settings{}, []string{"qwen3", "llama3", "qwen3"}, []string{"qwen3", "llama3"}},
+		{"default model", Settings{Model: "gemma3"}, []string{""}, []string{"gemma3"}},
+		{"nothing used", Settings{}, nil, nil},
+		{"turned off", Settings{UnloadOnExit: &no}, []string{"qwen3"}, nil},
+		{"model gone", Settings{}, []string{"missing"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			fs := newFakeServer(t, standardChunks...)
+			tc.s.Host = fs.URL
+			b := newBackend(t, tc.s)
+			for _, m := range tc.models {
+				for range b.Chat(t.Context(), backend.Request{Model: m, Messages: helloReq.Messages}) {
+				}
+			}
+			if err := b.Close(); err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(fs.unloaded, tc.want) {
+				t.Errorf("unloaded %q, want %q", fs.unloaded, tc.want)
+			}
+			// A second Close has nothing left to unload.
+			if err := b.Close(); err != nil || len(fs.unloaded) != len(tc.want) {
+				t.Errorf("second Close: %v, unloaded %q", err, fs.unloaded)
+			}
+		})
+	}
+}
+
+func TestCloseIgnoresStoppedServer(t *testing.T) {
+	fs := newFakeServer(t, standardChunks...)
+	b := newBackend(t, Settings{Host: fs.URL})
+	for range b.Chat(t.Context(), helloReq) {
+	}
+	fs.Close()
+	if err := b.Close(); err != nil {
+		t.Errorf("Close = %v, want nil once the server has gone", err)
 	}
 }

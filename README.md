@@ -306,6 +306,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `temperature` | model default | Sampling temperature |
 | `num_ctx` | model default | Context window in tokens |
 | `keep_alive` | Ollama default | How long the model stays loaded |
+| `unload_on_exit` | `true` | Unload the models used when rocket-chat exits, freeing their memory (see below) |
 | `think` | model default | `true`/`false` turns reasoning on or off |
 | `search.enabled` | `false` | Web search default; `--search` overrides |
 | `search.mode` | `auto` | `auto`, `direct` or `local` (see below) |
@@ -327,6 +328,12 @@ rocket-chat exits. A server that was already running is used and left running; r
 never started. The started server's output goes to `rocket-chat/ollama-serve.log` in the user cache
 directory (`~/.cache` on Linux). Set `"serve": {"auto_start": false}` to turn this off.
 
+A server that was already running, such as the `ollama` system service the Linux installer sets up,
+keeps a model in memory for `keep_alive` after its last request (5 minutes by default), which can
+hold several GB of GPU memory. So when rocket-chat exits, it asks that server to unload the models
+it chatted with; the server keeps running. Another program using the same model loads it again on
+its next request. Set `"unload_on_exit": false` to leave the models loaded, for example when
+`keep_alive` is set to keep them warm. `ollama ps` shows what is loaded.
 
 ### Ollama web search
 
