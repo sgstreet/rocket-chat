@@ -211,7 +211,9 @@ and arm64, plus `checksums.txt`, attached to a GitHub release. Start one either 
   `v0.2.0`. It checks the version, runs the tests, creates and pushes the tag, then releases.
 
 Release notes come from `docs/release-notes/<version>.md` when that file exists on `main` (write it
-before starting the release); otherwise the release lists the merged commits. To change the notes of
+before starting the release); otherwise the release lists the merged commits. Link each change to
+its pull request, as in `docs/release-notes/v0.5.0.md`, and end with a compare link to the previous
+release. To change the notes of
 a release that is already published, edit or add its file on `main` and run the Release notes
 workflow with the version.
 
