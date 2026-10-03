@@ -52,6 +52,22 @@ type Backend struct {
 
 	mu       sync.Mutex
 	requests []backend.Request
+	released []string
+}
+
+// ReleaseModel records model, and reports it freed.
+func (b *Backend) ReleaseModel(_ context.Context, model string) (bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.released = append(b.released, model)
+	return true, nil
+}
+
+// Released returns the models ReleaseModel was called with.
+func (b *Backend) Released() []string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return append([]string(nil), b.released...)
 }
 
 func (b *Backend) Name() string { return Name }

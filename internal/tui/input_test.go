@@ -338,3 +338,34 @@ func TestPartialModelList(t *testing.T) {
 		t.Errorf("completion list = %v", h.m.models)
 	}
 }
+
+func TestSwitchingReleasesTheOldModel(t *testing.T) {
+	a := &fake.Backend{Caps: backend.Capabilities{DefaultModel: "a-default"}}
+	b := &fake.Backend{}
+	h := newHarnessWith(t, map[string]*fake.Backend{"a": a, "b": b}, Options{Backend: "a"})
+
+	h.typeAndSend("/model m1")
+	if got := a.Released(); !slices.Equal(got, []string{"a-default"}) {
+		t.Fatalf("after /model m1: released %q, want the default model", got)
+	}
+	if !strings.Contains(h.last(entryNotice).text, "Unloaded a-default from a.") {
+		t.Errorf("notice = %q", h.last(entryNotice).text)
+	}
+
+	// Choosing the model already in use releases nothing.
+	h.typeAndSend("/model m1")
+	if got := a.Released(); len(got) != 1 {
+		t.Errorf("same model released %q", got)
+	}
+
+	// Leaving the backend releases its model there.
+	h.typeAndSend("/backend b")
+	if got := a.Released(); !slices.Equal(got, []string{"a-default", "m1"}) {
+		t.Errorf("after /backend b: released %q", got)
+	}
+	// b has no default model, so there is nothing to release when leaving it.
+	h.typeAndSend("/backend a")
+	if got := b.Released(); len(got) != 0 {
+		t.Errorf("b released %q", got)
+	}
+}

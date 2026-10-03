@@ -451,3 +451,42 @@ func TestCloseIgnoresStoppedServer(t *testing.T) {
 		t.Errorf("Close = %v, want nil once the server has gone", err)
 	}
 }
+
+func TestReleaseModel(t *testing.T) {
+	fs := newFakeServer(t, standardChunks...)
+	b := newBackend(t, Settings{Host: fs.URL})
+	for _, model := range []string{"qwen3", "kimi-k3:cloud"} {
+		for range b.Chat(t.Context(), backend.Request{Model: model, Messages: helloReq.Messages}) {
+		}
+	}
+	release := func(model string) bool {
+		t.Helper()
+		released, err := b.ReleaseModel(t.Context(), model)
+		if err != nil {
+			t.Fatalf("ReleaseModel(%s): %v", model, err)
+		}
+		return released
+	}
+
+	if !release("qwen3") || !slices.Equal(fs.unloaded, []string{"qwen3"}) {
+		t.Fatalf("qwen3 not unloaded: %q", fs.unloaded)
+	}
+	// Models this chat has not loaded, or no longer uses, and cloud models
+	// are left alone.
+	for _, model := range []string{"qwen3", "llama3", "kimi-k3:cloud"} {
+		if release(model) {
+			t.Errorf("released %s", model)
+		}
+	}
+	if err := b.Close(); err != nil || len(fs.unloaded) != 1 {
+		t.Errorf("Close: %v, unloaded %q; qwen3 was already unloaded", err, fs.unloaded)
+	}
+
+	off := false
+	b = newBackend(t, Settings{Host: fs.URL, UnloadOnSwitch: &off})
+	for range b.Chat(t.Context(), helloReq) {
+	}
+	if release("qwen3") {
+		t.Error("released with unload_on_switch off")
+	}
+}

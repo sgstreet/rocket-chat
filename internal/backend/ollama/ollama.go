@@ -55,6 +55,10 @@ type Settings struct {
 	// stay loaded, and a server rocket-chat started is stopped instead
 	// when no other copy uses it.
 	UnloadOnExit *bool `json:"unload_on_exit"`
+	// UnloadOnSwitch unloads a model when the chat moves to another model
+	// or backend, unless another running copy of rocket-chat uses it.
+	// Default true.
+	UnloadOnSwitch *bool `json:"unload_on_switch"`
 	// Think enables or disables reasoning for models that support it. When
 	// unset, the model's default applies.
 	Think *bool `json:"think"`
@@ -98,6 +102,8 @@ type Backend struct {
 }
 
 func (s Settings) unloadOnExit() bool { return s.UnloadOnExit == nil || *s.UnloadOnExit }
+
+func (s Settings) unloadOnSwitch() bool { return s.UnloadOnSwitch == nil || *s.UnloadOnSwitch }
 
 // unloadTimeout bounds each unload request on the way out.
 const unloadTimeout = 5 * time.Second
@@ -166,17 +172,43 @@ func (b *Backend) Close() error {
 		if slices.Contains(others, model) || isCloudModel(model) {
 			continue
 		}
-		if err := b.unload(model); err != nil {
+		if _, err := b.unload(context.Background(), model); err != nil {
 			errs = append(errs, fmt.Errorf("unloading %s: %w", model, err))
 		}
 	}
 	return errors.Join(errs...)
 }
 
-// unload asks the server to unload model now. A server that has gone away
-// or no longer has the model has nothing to unload.
-func (b *Backend) unload(model string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), unloadTimeout)
+// ReleaseModel unloads model, which the chat has moved away from, when
+// this backend chatted with it, it runs locally, no other running copy of
+// rocket-chat has used it, and unload_on_switch is on.
+func (b *Backend) ReleaseModel(ctx context.Context, model string) (bool, error) {
+	if !b.settings.unloadOnSwitch() || isCloudModel(model) {
+		return false, nil
+	}
+	b.serveMu.Lock()
+	i := slices.Index(b.used, model)
+	if i < 0 {
+		b.serveMu.Unlock()
+		return false, nil // never loaded by this chat
+	}
+	b.used = slices.Delete(b.used, i, i+1)
+	var others []string
+	if b.share != nil {
+		others = b.share.forget(model)
+	}
+	b.serveMu.Unlock()
+	if slices.Contains(others, model) {
+		return false, nil
+	}
+	return b.unload(ctx, model)
+}
+
+// unload asks the server to unload model now, reporting whether it did. A
+// server that has gone away or no longer has the model has nothing to
+// unload.
+func (b *Backend) unload(ctx context.Context, model string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, unloadTimeout)
 	defer cancel()
 	err := b.client.Generate(ctx, &api.GenerateRequest{
 		Model:     model,
@@ -184,9 +216,9 @@ func (b *Backend) unload(model string) error {
 	}, func(api.GenerateResponse) error { return nil })
 	var status api.StatusError
 	if isUnreachable(err) || (errors.As(err, &status) && status.StatusCode == http.StatusNotFound) {
-		return nil
+		return false, nil
 	}
-	return err
+	return err == nil, err
 }
 
 // markUsed records that model was chatted with, for Close to unload.

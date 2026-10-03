@@ -43,6 +43,14 @@ type Capabilities struct {
 	SearchSuggestions bool
 }
 
+// ModelReleaser is implemented by backends that hold resources for a
+// model, such as a local server keeping it in memory.
+type ModelReleaser interface {
+	// ReleaseModel frees what the backend holds for model, which the chat
+	// has stopped using. It reports whether anything was freed.
+	ReleaseModel(ctx context.Context, model string) (bool, error)
+}
+
 // PartialList is the error Models returns, along with the models it did
 // list, when some could not be listed.
 type PartialList struct {

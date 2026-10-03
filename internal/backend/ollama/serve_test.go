@@ -384,3 +384,20 @@ func TestUnloadLeavesModelsOthersUse(t *testing.T) {
 		t.Errorf("unloaded %q, want %q", fs.unloaded, want)
 	}
 }
+
+func TestReleaseLeavesModelsOthersUse(t *testing.T) {
+	fs := newFakeServer(t, standardChunks...)
+	a := newBackend(t, Settings{Host: fs.URL})
+	b := newBackend(t, Settings{Host: fs.URL})
+	for _, be := range []*Backend{a, b} {
+		for range be.Chat(t.Context(), helloReq) {
+		}
+	}
+	if released, err := a.ReleaseModel(t.Context(), "qwen3"); err != nil || released || len(fs.unloaded) != 0 {
+		t.Errorf("released %v, %v, unloaded %q while another copy uses qwen3", released, err, fs.unloaded)
+	}
+	// a no longer counts as a user, so b unloads it on exit.
+	if err := b.Close(); err != nil || !slices.Equal(fs.unloaded, []string{"qwen3"}) {
+		t.Errorf("Close: %v, unloaded %q", err, fs.unloaded)
+	}
+}
