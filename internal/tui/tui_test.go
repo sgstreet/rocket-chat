@@ -278,14 +278,14 @@ func TestCommands(t *testing.T) {
 		t.Error("/search default")
 	}
 
-	h.typeAndSend("/system be brief")
+	h.typeAndSend("/role custom be brief")
 	h.typeAndSend("question")
 	if r := a.Requests(); r[len(r)-1].System != "be brief" || r[len(r)-1].Model != "custom:tag" {
 		t.Errorf("request = %+v", r[len(r)-1])
 	}
-	h.typeAndSend("/system clear")
+	h.typeAndSend("/role off")
 	if h.m.system != "" {
-		t.Error("/system clear")
+		t.Error("/role off")
 	}
 
 	h.typeAndSend("/retry")

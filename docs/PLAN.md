@@ -26,7 +26,7 @@ backends are **Ollama** (local models, optional Ollama web search) and
 - Streaming replies; Esc cancels mid-answer.
 - Transcript, multi-line input, status bar (backend, model, tokens, latency, web search state).
 - Markdown rendering with syntax-highlighted code blocks.
-- Slash commands: `/backend`, `/model`, `/system`, `/search on|off`, `/new`, `/retry`, `/copy`, `/save`, `/export md`, `/sessions`, `/help`.
+- Slash commands: `/backend`, `/model`, `/role` (named or custom system prompts), `/search on|off`, `/new`, `/retry`, `/copy`, `/save`, `/export md`, `/sessions`, `/help`.
 - Collapsible "thinking" blocks for reasoning models.
 - Saved sessions with resume.
 - One-shot mode: `rocket-chat -b gemini "question"`, `cat f | rocket-chat -p "summarize"`.

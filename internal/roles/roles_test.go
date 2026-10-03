@@ -101,3 +101,37 @@ func TestLoadErrors(t *testing.T) {
 		})
 	}
 }
+
+func TestReplaceBuiltinPartly(t *testing.T) {
+	on, off := true, false
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "general.md"), []byte("Be brief."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	lib, err := Load(map[string]Config{
+		"technical": {Search: &on},                       // only turn search on
+		"research":  {Description: "My research helper"}, // only a new description
+		"general":   {File: "general.md", Search: &off},  // a new prompt from a file
+	}, dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	builtin := func(id string) Role { r, _ := Builtin().Find(id); return r }
+
+	tech, _ := lib.Find("technical")
+	if tech.Prompt != builtin("technical").Prompt || tech.Name != "Technical Adviser" ||
+		tech.Description != builtin("technical").Description || tech.Search == nil || !*tech.Search || tech.Builtin {
+		t.Errorf("technical = %+v", tech)
+	}
+	res, _ := lib.Find("research")
+	if res.Description != "My research helper" || res.Prompt != builtin("research").Prompt || res.Search == nil || !*res.Search {
+		t.Errorf("research = %+v", res)
+	}
+	gen, _ := lib.Find("general")
+	if gen.Prompt != "Be brief." || gen.Name != "General Assistant" || gen.Search == nil || *gen.Search {
+		t.Errorf("general = %+v", gen)
+	}
+	if ids := ids(lib.List()); !slices.Equal(ids, []string{"general", "technical", "research"}) {
+		t.Errorf("order = %v", ids)
+	}
+}

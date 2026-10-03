@@ -124,7 +124,7 @@ Flags:
 		fs.StringVar(&o.prompt, name, "", "prompt; piped stdin is appended to it")
 	}
 	for _, name := range []string{"s", "system"} {
-		fs.StringVar(&o.system, name, "", "system prompt text (instead of a role)")
+		fs.StringVar(&o.system, name, "", "your own system prompt, instead of a role (like /role custom in the chat)")
 	}
 	for _, name := range []string{"r", "role"} {
 		fs.StringVar(&o.role, name, "", "named system prompt, e.g. technical (see --list-roles)")

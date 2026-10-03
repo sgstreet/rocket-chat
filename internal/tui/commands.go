@@ -15,9 +15,10 @@ import (
 const helpText = `Commands:
   /backend [name]        show backends, or switch to one
   /model [name|number]   list models, or choose one (by name or list number)
-  /role [name|off]       list roles (named system prompts), or switch role
-  /role show [name]      print a role's full prompt (default: the current role)
-  /system [text|clear]   show the current prompt and list roles, or set or clear a custom one
+  /role                  show the prompt in use and list the roles
+  /role <name>|off       switch to a role, or use no prompt
+  /role custom <text>    use your own prompt for this chat
+  /role show [name]      print a role's full prompt (default: the one in use)
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
   /markdown on|off       render replies as Markdown, or show the model's text as it is
@@ -85,7 +86,7 @@ func (m *model) command(line string) tea.Cmd {
 	case "role", "roles":
 		m.setRole(arg)
 	case "system":
-		m.setSystem(arg)
+		m.errorf("/system is now part of /role: /role shows the prompt in use, /role custom <text> sets your own, /role off clears it.")
 	case "search":
 		m.setSearch(arg)
 	case "key", "keys":
@@ -190,30 +191,6 @@ func (m *model) showModels(msg modelsMsg) {
 	m.notice("%s", b.String())
 }
 
-func (m *model) setSystem(arg string) {
-	switch arg {
-	case "":
-		var b strings.Builder
-		switch r, ok := m.roles.Find(m.role); {
-		case m.role != "" && ok:
-			b.WriteString("System prompt, from the role " + r.Name + ":\n\n" + m.system)
-		case m.system != "":
-			b.WriteString("System prompt (custom):\n\n" + m.system)
-		default:
-			b.WriteString("No system prompt.")
-		}
-		b.WriteString("\n\n")
-		m.writeRoles(&b, "Available prompts (choose with /role <name>, or write your own with /system <text>):")
-		m.notice("%s", b.String())
-	case "clear", "off":
-		m.system, m.role = "", ""
-		m.notice("System prompt cleared.")
-	default:
-		m.system, m.role = arg, ""
-		m.notice("Custom system prompt set.")
-	}
-}
-
 // writeRoles writes header and the role library, marking the current role.
 func (m *model) writeRoles(b *strings.Builder, header string) {
 	b.WriteString(header)
@@ -229,31 +206,41 @@ func (m *model) writeRoles(b *strings.Builder, header string) {
 	}
 }
 
+// setRole runs /role. A role is a named system prompt; "custom" is the
+// user's own text, and "off" means no system prompt.
 func (m *model) setRole(arg string) {
-	switch arg {
+	cmd, rest, _ := strings.Cut(arg, " ")
+	rest = strings.TrimSpace(rest)
+	switch cmd {
 	case "":
 		var b strings.Builder
-		m.writeRoles(&b, "Roles (switch with /role <name>, /role off for none):")
+		m.writeCurrent(&b)
+		b.WriteString("\n\n")
+		m.writeRoles(&b, "Roles (/role <name> to switch, /role custom <text> for your own prompt, /role off for none):")
 		m.notice("%s", b.String())
 		return
 	case "off", "none", "clear":
-		m.system, m.role = "", ""
-		if !m.searchSet {
-			m.search = nil
-		}
+		m.useRole("", "")
 		m.notice("No role; no system prompt.")
 		return
-	}
-	if name, ok := strings.CutPrefix(arg, "show"); ok && (name == "" || name[0] == ' ') {
-		m.showRole(strings.TrimSpace(name))
+	case "show":
+		m.showRole(rest)
+		return
+	case "custom":
+		if rest == "" {
+			m.errorf("Usage: /role custom <prompt text>")
+			return
+		}
+		m.useRole("", rest)
+		m.notice("Using your own prompt for this chat. /role shows it.")
 		return
 	}
 	r, ok := m.roles.Find(arg)
 	if !ok {
-		m.errorf("No role %q. Available: %s.", arg, strings.Join(m.roles.Names(), ", "))
+		m.errorf("No role %q. Available: %s; or /role custom <text>.", arg, strings.Join(m.roles.Names(), ", "))
 		return
 	}
-	m.system, m.role = r.Prompt, r.ID
+	m.useRole(r.ID, r.Prompt)
 	msg := "Role: " + r.Name + "."
 	if !m.searchSet {
 		m.search = r.Search
@@ -268,11 +255,34 @@ func (m *model) setRole(arg string) {
 	m.notice("%s", msg)
 }
 
+// useRole sets the system prompt: a role's (id set) or custom text (id
+// ""). A role's search setting stops applying unless the user chose one.
+func (m *model) useRole(id, prompt string) {
+	m.role, m.system = id, prompt
+	if !m.searchSet {
+		m.search = nil
+	}
+}
+
+// writeCurrent describes the prompt in use, with its full text.
+func (m *model) writeCurrent(b *strings.Builder) {
+	switch r, ok := m.roles.Find(m.role); {
+	case m.role != "" && ok:
+		fmt.Fprintf(b, "Role: %s (%s)\n\n%s", r.Name, r.ID, m.system)
+	case m.system != "":
+		b.WriteString("Role: custom\n\n" + m.system)
+	default:
+		b.WriteString("No role: no system prompt.")
+	}
+}
+
 // showRole prints a role's full prompt; name "" means the current role.
 func (m *model) showRole(name string) {
 	if name == "" {
 		if m.role == "" {
-			m.errorf("No role is in use. Show one with /role show <name>, or see the current prompt with /system.")
+			var b strings.Builder
+			m.writeCurrent(&b)
+			m.notice("%s", b.String())
 			return
 		}
 		name = m.role

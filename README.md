@@ -59,7 +59,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
   goes back to the input. Clicking inside the input puts the cursor there, in multi-line input too.
   Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/role`, `/system`, `/search on|off|default`, `/key`, `/markdown on|off`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
@@ -121,13 +121,19 @@ A role is a named system prompt. Three are built in:
 | `technical` | Technical Adviser | Engineering and software questions, trade-offs, working code |
 | `research` | Research Assistant | Finding and weighing sources, with citations; turns web search on |
 
-Use one with `rocket-chat --role technical "question"` (or `-r`; display names such as
-`"Technical Adviser"` work too), or `/role technical` in the chat. `/role` lists them, `/role off`
-removes the role, and `--list-roles` prints them. To read a role's full prompt, use
-`/role show technical` (or just `/role show` for the current one) or `rocket-chat --show-role technical`,
-which prints only the prompt, ready to save to a file and edit. `/system` on its own shows the full
-prompt in use and lists the available roles. `-s "text"` and `/system text` still set a custom
-system prompt instead. Saved chats remember their role.
+In the chat, everything about the system prompt goes through `/role`:
+
+| Command | Does |
+|---|---|
+| `/role` | Shows the prompt in use, in full, and lists the roles |
+| `/role technical` | Switches role (display names such as `Technical Adviser` work too) |
+| `/role custom <text>` | Uses your own prompt for this chat; the status bar shows `role: custom` |
+| `/role off` | No system prompt |
+| `/role show technical` | Prints a role's full prompt without switching to it |
+
+On the command line, `--role technical` (or `-r`) picks a role, `-s "text"` gives your own prompt
+instead, `--list-roles` lists them and `--show-role technical` prints one, ready to save to a file and
+edit. Saved chats remember their role or custom prompt.
 
 Add your own, or replace a built-in by reusing its ID, in `config.json`. Long prompts can live in a
 file, relative to the config file's directory:
@@ -151,13 +157,14 @@ file, relative to the config file's directory:
 ```
 
 Each entry under `roles` is keyed by the role's ID: lowercase letters, digits and dashes, used with
-`--role` and `/role`. Reusing a built-in's ID (`general`, `technical`, `research`) replaces the whole
-role, so give the replacement its own `name`, `description` and `search` too; any other ID adds a
-role.
+`--role` and `/role`. Any other ID adds a role. Reusing a built-in's ID (`general`, `technical`,
+`research`) changes that role: what you set replaces the built-in's value, and what you leave out is
+kept. For example, `"technical": {"search": true}` keeps the Technical Adviser prompt and turns web
+search on with it.
 
 | Field | Meaning |
 |---|---|
-| `name` | Display name in lists and the status bar; defaults to the ID |
+| `name` | Display name in lists and the status bar; defaults to the ID (or, for a built-in, its name) |
 | `description` | One line shown in `/role` and `--list-roles` |
 | `prompt` | The system prompt, written inline |
 | `file` | A file holding the system prompt, instead of `prompt` |
@@ -167,8 +174,8 @@ role.
 
 ### Prompts in files
 
-A role needs exactly one of `prompt` or `file`; giving both, or neither, is an error that names the
-role. Use `file` for long prompts, which are awkward as one JSON string:
+A new role needs exactly one of `prompt` or `file` (a changed built-in may leave both out to keep
+its prompt); giving both is an error that names the role. Use `file` for long prompts, which are awkward as one JSON string:
 
 - A relative path is relative to the config file's directory, so with the default config
   `prompts/technical.md` means `~/.config/rocket-chat/prompts/technical.md` on Linux. Paths starting with
@@ -186,15 +193,11 @@ rocket-chat --show-role technical > ~/.config/rocket-chat/prompts/technical.md
 ```
 
 Edit the file, point the role at it in `config.json`, and check the result with
-`rocket-chat --show-role technical`:
+`rocket-chat --show-role technical`. The role keeps its name, description and search setting:
 
 ```json
 "roles": {
-  "technical": {
-    "name": "Technical Adviser",
-    "description": "Engineering and software questions, with trade-offs and working code",
-    "file": "prompts/technical.md"
-  }
+  "technical": { "file": "prompts/technical.md" }
 }
 ```
 
