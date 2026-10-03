@@ -3,6 +3,10 @@ package tui
 import (
 	"slices"
 	"strings"
+
+	tea "charm.land/bubbletea/v2"
+
+	"github.com/sgstreet/rocket-chat/internal/backend"
 )
 
 // commands are the slash commands Tab completes, in the order /help lists
@@ -24,24 +28,28 @@ type completion struct {
 }
 
 // complete handles Tab (dir 1) and Shift+Tab (dir -1) in a slash command.
-// It reports false when the input is not a one-line slash command.
-func (m *model) complete(dir int) bool {
+// It reports false when the input is not a one-line slash command. The
+// command it returns fetches the model list when /model needs it.
+func (m *model) complete(dir int) (tea.Cmd, bool) {
 	text := m.input.Value()
 	if !strings.HasPrefix(text, "/") || strings.Contains(text, "\n") {
-		return false
+		return nil, false
 	}
 	c := m.compl
 	if c == nil || c.shown != text || len(c.cands) < 2 {
+		if m.models == nil && completingModel(text) {
+			return m.fetchModelsFor(text), true
+		}
 		c = m.newCompletion(text)
 		if c == nil {
 			m.complHint = "no completions"
-			return true
+			return nil, true
 		}
 		m.compl = c
 		if len(c.cands) == 1 {
 			m.setCompletion(c.prefix + c.cands[0] + " ")
 			m.compl, m.complHint = nil, ""
-			return true
+			return nil, true
 		}
 		// First Tab: extend to what all candidates share, if that adds
 		// anything; otherwise start cycling.
@@ -50,7 +58,7 @@ func (m *model) complete(dir int) bool {
 			c.i = -1
 			m.setCompletion(c.prefix + common)
 			m.complHint = strings.Join(c.cands, "  ")
-			return true
+			return nil, true
 		}
 		c.i = -1
 	}
@@ -60,7 +68,62 @@ func (m *model) complete(dir int) bool {
 	c.i = (c.i + dir + len(c.cands)) % len(c.cands)
 	m.setCompletion(c.prefix + c.cands[c.i])
 	m.complHint = hintWithCurrent(c.cands, c.i)
-	return true
+	return nil, true
+}
+
+// completingModel reports whether the word being completed is /model's
+// argument.
+func completingModel(text string) bool {
+	body := strings.TrimPrefix(text, "/")
+	fields := strings.Fields(body)
+	if len(fields) == 0 || fields[0] != "model" {
+		return false
+	}
+	trailing := strings.HasSuffix(body, " ")
+	return (len(fields) == 1 && trailing) || (len(fields) == 2 && !trailing)
+}
+
+// fetchModelsFor lists the backend's models in the background, so Tab can
+// complete /model before /model has been run. When the list arrives, the
+// completion of text resumes if the input has not changed.
+func (m *model) fetchModelsFor(text string) tea.Cmd {
+	m.complHint = "loading " + m.backendName + " models…"
+	m.modelsWaiting = text
+	if m.modelsLoading {
+		return nil
+	}
+	m.modelsLoading = true
+	b, name := m.b, m.backendName
+	return func() tea.Msg {
+		models, err := b.Models(m.ctx)
+		return modelsMsg{backend: name, models: models, err: err, forCompletion: true}
+	}
+}
+
+// modelsForCompletion stores a list fetched by fetchModelsFor and carries
+// on with the completion that asked for it.
+func (m *model) modelsForCompletion(msg modelsMsg) tea.Cmd {
+	m.modelsLoading = false
+	waiting := m.modelsWaiting
+	m.modelsWaiting = ""
+	if msg.backend != m.backendName {
+		return nil
+	}
+	if msg.err != nil {
+		if waiting != "" && m.input.Value() == waiting {
+			m.complHint = "cannot list models: " + msg.err.Error()
+		}
+		return nil
+	}
+	m.models = msg.models
+	if m.models == nil {
+		m.models = []backend.ModelInfo{} // listed, and there are none
+	}
+	if waiting == "" || m.input.Value() != waiting {
+		return nil
+	}
+	cmd, _ := m.complete(1)
+	return cmd
 }
 
 func (m *model) setCompletion(text string) {

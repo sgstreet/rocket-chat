@@ -35,7 +35,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
   through the list, and Down past the newest entry brings back what you were typing. In a
   multi-line input, Up and Down move between lines first.
 - Tab completes commands and their arguments: `/ba` → `/backend `, `/role show te` →
-  `/role show technical`, `/backend `, `/model ` (after `/model` has listed the models), `/search `,
+  `/role show technical`, `/backend `, `/model ` (the model list is fetched on the first Tab), `/search `,
   `/key `. With several matches the bottom line lists them and Tab (Shift+Tab backwards)
   cycles through them.
 - Copy and paste with the mouse on (the default):

@@ -43,6 +43,9 @@ type modelsMsg struct {
 	backend string
 	models  []backend.ModelInfo
 	err     error
+	// forCompletion marks a list fetched for Tab completion, which is
+	// stored without being shown.
+	forCompletion bool
 }
 
 // command runs a slash command.

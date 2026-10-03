@@ -130,6 +130,10 @@ type model struct {
 	// candidates in the help line.
 	compl     *completion
 	complHint string
+	// modelsLoading is set while the model list is fetched for Tab;
+	// modelsWaiting is the input that asked for it.
+	modelsLoading bool
+	modelsWaiting string
 	// mouse reports whether mouse events are captured.
 	mouse bool
 	// sel is the mouse selection, if any; lines is the rendered transcript
@@ -244,6 +248,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.handleStream(msg)
 
 	case modelsMsg:
+		if msg.forCompletion {
+			return m, m.modelsForCompletion(msg)
+		}
 		m.showModels(msg)
 		return m, nil
 
@@ -311,9 +318,9 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	case "ctrl+v":
 		return m.paste(), true
 	case "tab":
-		return nil, m.complete(1)
+		return m.complete(1)
 	case "shift+tab":
-		return nil, m.complete(-1)
+		return m.complete(-1)
 	case "up", "ctrl+p":
 		if k == "ctrl+p" || m.onFirstRow() {
 			if text, ok := m.hist.prev(m.input.Value()); ok {

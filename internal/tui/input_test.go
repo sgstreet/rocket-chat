@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"strings"
@@ -254,5 +256,66 @@ func TestMouse(t *testing.T) {
 	off := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake"})
 	if off.m.View().MouseMode != tea.MouseModeNone {
 		t.Error("mouse captured with Mouse off")
+	}
+}
+
+// modelsFail is a backend whose model list cannot be fetched.
+type modelsFail struct{ *fake.Backend }
+
+func (modelsFail) Models(context.Context) ([]backend.ModelInfo, error) {
+	return nil, errors.New("server down")
+}
+
+func TestModelCompletionFetchesModels(t *testing.T) {
+	a := &fake.Backend{ModelList: []backend.ModelInfo{{Name: "qwen3:4b"}, {Name: "qwen3:0.6b"}, {Name: "llama3.2"}}}
+	b := &fake.Backend{ModelList: []backend.ModelInfo{{Name: "gemini-flash-latest"}, {Name: "gemini-pro-latest"}}}
+	h := newHarnessWith(t, map[string]*fake.Backend{"a": a, "b": b}, Options{Backend: "a"})
+	tab := func(start string) string {
+		h.m.input.SetValue(start)
+		h.m.compl = nil
+		h.send(press("tab"))
+		return h.m.input.Value()
+	}
+
+	// No /model run yet: Tab fetches the list and completes.
+	if h.m.models != nil {
+		t.Fatal("models loaded before /model or Tab")
+	}
+	if got := tab("/model ll"); got != "/model llama3.2 " {
+		t.Errorf("/model ll = %q", got)
+	}
+	if got := tab("/model q"); got != "/model qwen3:" || !strings.Contains(h.view(), "qwen3:4b  qwen3:0.6b") {
+		t.Errorf("/model q = %q", got)
+	}
+	if got := tab("/model "); got != "/model qwen3:4b" {
+		t.Errorf("/model <tab> = %q", got)
+	}
+	// Nothing was printed into the conversation.
+	for _, e := range h.m.entries {
+		if strings.Contains(e.text, "models (choose") {
+			t.Error("Tab printed the model list")
+		}
+	}
+
+	// After switching backend the list is fetched again, for that backend.
+	h.typeAndSend("/backend b")
+	if got := tab("/model gemini-p"); got != "/model gemini-pro-latest " {
+		t.Errorf("after /backend: %q", got)
+	}
+
+	// A list that cannot be fetched says why.
+	h.m.b, h.m.models = modelsFail{b}, nil
+	if got := tab("/model g"); got != "/model g" || !strings.Contains(h.view(), "cannot list models: server down") {
+		t.Errorf("failed list: %q; view:\n%s", got, h.view())
+	}
+
+	// A list that arrives after the input changed only stores the models.
+	h.m.b, h.m.models = b, nil
+	h.m.input.SetValue("/model g")
+	cmd, _ := h.m.complete(1)
+	h.m.input.SetValue("something else")
+	h.send(cmd())
+	if h.m.input.Value() != "something else" || len(h.m.models) != 2 {
+		t.Errorf("late list: input %q, models %d", h.m.input.Value(), len(h.m.models))
 	}
 }
