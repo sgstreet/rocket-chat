@@ -248,7 +248,7 @@ func TestMouse(t *testing.T) {
 	}
 
 	h.typeAndSend("/mouse off")
-	if h.m.View().MouseMode != tea.MouseModeNone || !strings.Contains(h.last(entryNotice).text, "select text") {
+	if h.m.View().MouseMode != tea.MouseModeNone || !strings.Contains(h.last(entryNotice).text, "selects text") {
 		t.Error("/mouse off")
 	}
 	h.typeAndSend("/mouse")

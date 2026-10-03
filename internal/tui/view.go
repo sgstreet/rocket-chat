@@ -200,6 +200,8 @@ func (m *model) helpLine() string {
 	switch {
 	case m.keyFor != "":
 		help = " enter save the key · esc cancel"
+	case m.flash != "":
+		help = " " + m.flash
 	case m.complHint != "":
 		help = " tab: " + m.complHint
 	case m.mouse:
