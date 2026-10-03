@@ -2,6 +2,7 @@
 package tui
 
 import (
+	"cmp"
 	"context"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/roles"
 	"github.com/sgstreet/rocket-chat/internal/store"
 )
 
@@ -38,6 +40,11 @@ type Options struct {
 	Resume *store.Session
 	// Theme is "dark", "light", or "" to follow the terminal background.
 	Theme string
+	// Roles is the role library for /role; nil means the built-in roles.
+	Roles *roles.Library
+	// Role is the ID of the role whose prompt System holds, if any. Its
+	// search setting applies unless Search is set.
+	Role string
 }
 
 // Run starts the chat and blocks until the user quits or ctx ends.
@@ -63,6 +70,13 @@ type model struct {
 	modelName   string
 	system      string
 	search      *bool
+	// role is the ID of the active role; "" when the system prompt is
+	// custom or empty.
+	role  string
+	roles *roles.Library
+	// searchSet records that the user chose web search with --search or
+	// /search, so roles no longer change it.
+	searchSet bool
 
 	entries      []*entry
 	showThinking bool
@@ -112,6 +126,9 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		b:           b,
 		modelName:   opts.Model,
 		system:      opts.System,
+		role:        opts.Role,
+		roles:       cmp.Or(opts.Roles, roles.Builtin()),
+		searchSet:   opts.Search != nil,
 		search:      opts.Search,
 		viewport:    viewport.New(),
 		input:       in,
@@ -120,6 +137,9 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		md:          &markdown{},
 	}
 	m.setStyles()
+	if r, ok := m.roles.Find(m.role); ok && m.role != "" && !m.searchSet {
+		m.search = r.Search
+	}
 	if opts.Resume != nil {
 		m.restore(opts.Resume)
 	} else {

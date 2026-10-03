@@ -31,7 +31,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
 - Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn scroll,
   Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/sessions`, `/resume`,
+  `/role`, `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/sessions`, `/resume`,
   `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
@@ -55,6 +55,45 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
   terminal; `-v` also prints token usage and timing, and `--thinking` prints the model's reasoning.
 - `--search` / `--search=false` overrides the backend's web search default.
 - Exit codes: 0 success, 1 error, 2 usage error, 130 interrupted (Ctrl+C).
+
+## Roles
+
+A role is a named system prompt. Three are built in:
+
+| ID | Name | For |
+|---|---|---|
+| `general` | General Assistant | Clear answers on any topic |
+| `technical` | Technical Adviser | Engineering and software questions, trade-offs, working code |
+| `research` | Research Assistant | Finding and weighing sources, with citations; turns web search on |
+
+Use one with `rocket-chat --role technical "question"` (or `-r`; display names such as
+`"Technical Adviser"` work too), or `/role technical` in the chat. `/role` lists them, `/role off`
+removes the role, and `--list-roles` prints them. `-s "text"` and `/system text` still set a custom
+system prompt instead. Saved chats remember their role.
+
+Add your own, or replace a built-in by reusing its ID, in `config.json`. Long prompts can live in a
+file, relative to the config file's directory:
+
+```json
+{
+  "default_role": "general",
+  "roles": {
+    "reviewer": {
+      "name": "Code Reviewer",
+      "description": "Strict reviews of diffs and code",
+      "file": "prompts/reviewer.md"
+    },
+    "brief": {
+      "name": "Brief",
+      "prompt": "Answer in at most three sentences.",
+      "search": false
+    }
+  }
+}
+```
+
+`search` turns web search on or off while the role is in use, unless `--search` or `/search` says
+otherwise. `default_role` applies when neither `--role` nor `-s` is given.
 
 ## Releasing
 

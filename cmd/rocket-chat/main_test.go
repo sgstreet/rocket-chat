@@ -15,6 +15,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend/fake"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
+	"github.com/sgstreet/rocket-chat/internal/roles"
 	"github.com/sgstreet/rocket-chat/internal/store"
 	"github.com/sgstreet/rocket-chat/internal/tui"
 )
@@ -339,7 +340,7 @@ func TestSessionOptions(t *testing.T) {
 	}
 
 	var opts tui.Options
-	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "last", model: "new-model"}, &opts); err != nil {
+	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "last", model: "new-model"}, nil, &opts); err != nil {
 		t.Fatal(err)
 	}
 	if opts.Store == nil || opts.Resume == nil || opts.Backend != "gemini" {
@@ -350,7 +351,7 @@ func TestSessionOptions(t *testing.T) {
 	}
 
 	opts = tui.Options{Backend: "ollama"}
-	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "s1", backend: "ollama"}, &opts); err != nil {
+	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "s1", backend: "ollama"}, nil, &opts); err != nil {
 		t.Fatal(err)
 	}
 	if opts.Backend != "ollama" {
@@ -359,13 +360,13 @@ func TestSessionOptions(t *testing.T) {
 
 	off := false
 	opts = tui.Options{}
-	if err := sessionOptions(config.Sessions{Save: &off}, options{}, &opts); err != nil || opts.Store != nil {
+	if err := sessionOptions(config.Sessions{Save: &off}, options{}, nil, &opts); err != nil || opts.Store != nil {
 		t.Errorf("save off: store %v, err %v", opts.Store, err)
 	}
-	if err := sessionOptions(config.Sessions{Save: &off}, options{resume: "last"}, &opts); err == nil {
+	if err := sessionOptions(config.Sessions{Save: &off}, options{resume: "last"}, nil, &opts); err == nil {
 		t.Error("--resume with saving off should fail")
 	}
-	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "missing"}, &opts); !errors.Is(err, store.ErrNotFound) {
+	if err := sessionOptions(config.Sessions{Dir: dir}, options{resume: "missing"}, nil, &opts); !errors.Is(err, store.ErrNotFound) {
 		t.Errorf("missing session: %v", err)
 	}
 }
@@ -376,6 +377,79 @@ func TestExpandHome(t *testing.T) {
 		if got, err := expandHome(in); err != nil || got != want {
 			t.Errorf("expandHome(%q) = %q, %v; want %q", in, got, err, want)
 		}
+	}
+}
+
+func TestRoles(t *testing.T) {
+	recorder = &fake.Backend{}
+	r := cli(t, t.Context(), nil, "-b", "test-record", "--role", "technical", "q")
+	tech, _ := roles.Builtin().Find("technical")
+	if r.code != exitOK || recorder.Requests()[0].System != tech.Prompt {
+		t.Fatalf("--role: %+v", r)
+	}
+	if recorder.Requests()[0].Search != nil {
+		t.Error("technical should not set search")
+	}
+
+	recorder = &fake.Backend{}
+	cli(t, t.Context(), nil, "-b", "test-record", "-r", "Research Assistant", "q")
+	if s := recorder.Requests()[0].Search; s == nil || !*s {
+		t.Error("research should turn search on")
+	}
+	recorder = &fake.Backend{}
+	cli(t, t.Context(), nil, "-b", "test-record", "-r", "research", "--search=false", "q")
+	if s := recorder.Requests()[0].Search; s == nil || *s {
+		t.Error("--search=false should win over the role")
+	}
+
+	if r := cli(t, t.Context(), nil, "-b", "fake", "--role", "lawyer", "q"); r.code != exitError || !strings.Contains(r.errOut, `unknown role "lawyer"`) {
+		t.Errorf("unknown role: %+v", r)
+	}
+	if r := cli(t, t.Context(), nil, "-b", "fake", "--role", "general", "-s", "x", "q"); r.code != exitUsage {
+		t.Errorf("--role with -s: %+v", r)
+	}
+}
+
+func TestRolesFromConfig(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "pirate.md"), []byte("Talk like a pirate."), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(dir, "config.json")
+	cfg := `{"default_role": "pirate", "roles": {"pirate": {"name": "Pirate", "description": "Arr", "file": "pirate.md"}}}`
+	if err := os.WriteFile(path, []byte(cfg), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	r := cli(t, t.Context(), nil, "--config", path, "--list-roles")
+	if r.code != exitOK || !strings.Contains(r.out, "* pirate") || !strings.Contains(r.out, "  general") || !strings.Contains(r.out, "Research Assistant") {
+		t.Errorf("--list-roles:\n%s", r.out)
+	}
+
+	recorder = &fake.Backend{}
+	cli(t, t.Context(), nil, "--config", path, "-b", "test-record", "q")
+	if got := recorder.Requests()[0].System; got != "Talk like a pirate." {
+		t.Errorf("default_role system = %q", got)
+	}
+	recorder = &fake.Backend{}
+	cli(t, t.Context(), nil, "--config", path, "-b", "test-record", "-s", "custom", "q")
+	if got := recorder.Requests()[0].System; got != "custom" {
+		t.Errorf("-s should replace the default role, got %q", got)
+	}
+
+	bad := filepath.Join(dir, "bad.json")
+	if err := os.WriteFile(bad, []byte(`{"roles": {"x": {"name": "X"}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if r := cli(t, t.Context(), nil, "--config", bad, "-b", "fake", "q"); r.code != exitError || !strings.Contains(r.errOut, "roles.x: a role needs a prompt or a file") {
+		t.Errorf("bad role: %+v", r)
+	}
+	unknownDefault := filepath.Join(dir, "unknown.json")
+	if err := os.WriteFile(unknownDefault, []byte(`{"default_role": "nope"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if r := cli(t, t.Context(), nil, "--config", unknownDefault, "-b", "fake", "q"); r.code != exitError || !strings.Contains(r.errOut, `unknown role "nope"`) {
+		t.Errorf("unknown default_role: %+v", r)
 	}
 }
 
