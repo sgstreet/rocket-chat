@@ -49,6 +49,9 @@ type env struct {
 	stdinIsInput     bool
 	stdoutIsTerminal bool
 	stderrIsTerminal bool
+	// readSecret prompts on the terminal and reads a line without echoing
+	// it; nil when stdin is not a terminal.
+	readSecret func(ctx context.Context, prompt string) (string, error)
 }
 
 func main() {
@@ -60,6 +63,7 @@ func main() {
 		stdinIsInput:     isInput(os.Stdin),
 		stdoutIsTerminal: isTerminal(os.Stdout),
 		stderrIsTerminal: isTerminal(os.Stderr),
+		readSecret:       terminalSecretReader(os.Stdin, os.Stderr),
 	})
 	stop()
 	os.Exit(code)
@@ -68,6 +72,7 @@ func main() {
 type options struct {
 	backend, model, prompt, system string
 	configPath, resume, role       string
+	setKey, removeKey              string
 	search, thinking, verbose      bool
 	showVersion, listBackends      bool
 	listModels, listRoles          bool
@@ -113,6 +118,8 @@ Flags:
 	fs.BoolVar(&o.listBackends, "list-backends", false, "print the available backends and exit")
 	fs.BoolVar(&o.listModels, "list-models", false, "print the selected backend's models and exit")
 	fs.BoolVar(&o.listRoles, "list-roles", false, "print the available roles and exit")
+	fs.StringVar(&o.setKey, "set-key", "", "save an API key for a backend in the config file and exit;\nthe key is read from stdin or prompted for (backends: "+strings.Join(backend.KeyNames(), ", ")+")")
+	fs.StringVar(&o.removeKey, "remove-key", "", "remove a backend's saved API key from the config file and exit")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
@@ -133,9 +140,19 @@ Flags:
 		return exitOK
 	}
 
-	cfg, cfgPath, err := loadConfig(o.configPath)
+	cfg, cfgPath, err := loadConfig(o.configPath, e.stderr)
 	if err != nil {
 		return fail(e, err)
+	}
+	keys := &keyStore{cfg: &cfg, path: cfgPath}
+	switch {
+	case o.setKey != "" && o.removeKey != "":
+		fmt.Fprintln(e.stderr, "rocket-chat: give either --set-key or --remove-key, not both")
+		return exitUsage
+	case o.setKey != "":
+		return setKey(ctx, e, keys, o.setKey)
+	case o.removeKey != "":
+		return removeKey(e, keys, o.removeKey)
 	}
 	lib, err := roles.Load(cfg.Roles, filepath.Dir(cfgPath))
 	if err != nil {
@@ -203,7 +220,16 @@ Flags:
 			fmt.Fprintln(e.stderr, "rocket-chat: no prompt given, and interactive chat needs a terminal (see -h)")
 			return exitUsage
 		}
+		// The chat cannot start without the backend, so ask for a missing
+		// key now rather than failing.
+		if err := promptForKey(ctx, e, keys, name); err != nil {
+			if ctx.Err() != nil {
+				return exitInterrupted
+			}
+			return fail(e, err)
+		}
 		opts := tui.Options{
+			Keys:     keys,
 			Backend:  name,
 			Model:    o.model,
 			System:   system,
@@ -356,17 +382,20 @@ func expandHome(path string) (string, error) {
 	return filepath.Join(home, rest), nil
 }
 
-// loadConfig reads the config file. A file named with --config must exist;
-// the default location may be absent.
-func loadConfig(path string) (config.Config, string, error) {
-	if path != "" {
-		if _, err := os.Stat(path); err != nil {
-			return config.Config{}, "", err
-		}
-	} else {
+// loadConfig reads the config file, first creating it with the defaults
+// if it does not exist. Failing to create it is only a warning.
+func loadConfig(path string, stderr io.Writer) (config.Config, string, error) {
+	if path == "" {
 		var err error
 		if path, err = config.Path(); err != nil {
 			return config.Config{}, "", err
+		}
+	}
+	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
+		if err := config.Create(path); err != nil {
+			fmt.Fprintf(stderr, "rocket-chat: could not create a default config file: %v\n", err)
+		} else {
+			fmt.Fprintf(stderr, "rocket-chat: created the config file %s\n", path)
 		}
 	}
 	cfg, err := config.Load(path)

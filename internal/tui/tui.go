@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textarea"
+	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -45,6 +46,21 @@ type Options struct {
 	// Role is the ID of the role whose prompt System holds, if any. Its
 	// search setting applies unless Search is set.
 	Role string
+	// Keys reads and saves API keys for /key; nil turns the command off.
+	Keys Keys
+}
+
+// Keys reads and saves backends' API keys.
+type Keys interface {
+	// Names returns the backends that take an API key.
+	Names() []string
+	// Status describes where a backend's key comes from.
+	Status(name string) string
+	// Set saves a key, or removes it when key is empty.
+	Set(name, key string) error
+	// Overridden names the environment variable that takes precedence
+	// over the saved key, or returns "".
+	Overridden(name string) string
 }
 
 // Run starts the chat and blocks until the user quits or ctx ends.
@@ -91,6 +107,10 @@ type model struct {
 
 	viewport viewport.Model
 	input    textarea.Model
+	// keyInput replaces the input box while an API key is typed for
+	// keyFor, so the key is never shown.
+	keyInput textinput.Model
+	keyFor   string
 	spinner  spinner.Model
 	width    int
 	height   int
@@ -119,7 +139,16 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 	in.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j"))
 	in.Focus()
 
+	keyIn := textinput.New()
+	keyIn.EchoMode = textinput.EchoPassword
+	keyIn.EchoCharacter = '•'
+	// A steady cursor: the key prompt is short-lived.
+	keyStyles := keyIn.Styles()
+	keyStyles.Cursor.Blink = false
+	keyIn.SetStyles(keyStyles)
+
 	m := &model{
+		keyInput:    keyIn,
 		ctx:         ctx,
 		opts:        opts,
 		backendName: opts.Backend,
@@ -193,14 +222,24 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case tea.KeyPressMsg:
+		if m.keyFor != "" {
+			return m, m.handleKeyEntry(msg)
+		}
 		if cmd, handled := m.handleKey(msg); handled {
 			return m, cmd
 		}
 
 	case tea.PasteMsg:
-		// Let the textarea take pasted text, newlines included.
+		// Let the textarea, or the key prompt, take pasted text.
+		if m.keyFor != "" {
+			var cmd tea.Cmd
+			m.keyInput, cmd = m.keyInput.Update(msg)
+			return m, cmd
+		}
 	}
 
+	// Other messages, such as the cursor blink, go to the chat input even
+	// while a key is typed, so its cursor keeps blinking afterwards.
 	var cmd tea.Cmd
 	m.input, cmd = m.input.Update(msg)
 	return m, cmd
@@ -270,10 +309,14 @@ func (m *model) View() tea.View {
 	if m.quitting {
 		return tea.NewView("")
 	}
+	input := m.input.View()
+	if m.keyFor != "" {
+		input = lipgloss.NewStyle().Height(inputHeight).Render(m.keyInput.View())
+	}
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
 		m.viewport.View(),
 		m.statusLine(),
-		m.input.View(),
+		input,
 		m.helpLine(),
 	))
 	v.AltScreen = true
@@ -287,6 +330,7 @@ func (m *model) layout() {
 		return
 	}
 	m.input.SetWidth(m.width)
+	m.keyInput.SetWidth(max(1, m.width-lipgloss.Width(m.keyInput.Prompt)-1))
 	m.viewport.SetWidth(m.width)
 	m.viewport.SetHeight(max(1, m.height-inputHeight-2))
 	m.refresh()

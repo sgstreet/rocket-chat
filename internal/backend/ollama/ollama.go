@@ -33,6 +33,7 @@ func init() {
 		}
 		return New(s, nil)
 	})
+	backend.RegisterKey(Name, keyInfo)
 }
 
 // Settings is the backends.ollama config section.
@@ -51,6 +52,9 @@ type Settings struct {
 	// Think enables or disables reasoning for models that support it. When
 	// unset, the model's default applies.
 	Think *bool `json:"think"`
+	// APIKey is the ollama.com API key web search uses. OLLAMA_API_KEY, when
+	// set, takes precedence.
+	APIKey string `json:"api_key"`
 	// Search configures Ollama web search.
 	Search SearchSettings `json:"search"`
 	// Serve configures starting a local server when none is running.
@@ -293,7 +297,7 @@ func (b *Backend) chatWithSearch(ctx context.Context, model string, cr *api.Chat
 		return fmt.Errorf("model %q does not support tool calling, which web search needs; "+
 			"choose a model with tools support or turn search off (--search=false)", model)
 	}
-	searcher, err := newSearcher(s.Mode, s.APIURL, b.client, b.http)
+	searcher, err := newSearcher(s.Mode, s.APIURL, b.settings.APIKey, b.client, b.http)
 	if err != nil {
 		return err
 	}

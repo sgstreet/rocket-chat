@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"iter"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -27,8 +26,14 @@ const Name = "gemini"
 // DefaultModel is used when neither the request nor the config names one.
 const DefaultModel = "gemini-flash-latest"
 
-// API key environment variables, in order of preference.
-var apiKeyEnv = []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"}
+// keyInfo describes the API key: GEMINI_API_KEY or GOOGLE_API_KEY, else the
+// api_key setting.
+var keyInfo = backend.KeyInfo{
+	Description: "Gemini API key",
+	URL:         "https://aistudio.google.com/apikey",
+	Env:         []string{"GEMINI_API_KEY", "GOOGLE_API_KEY"},
+	Required:    true,
+}
 
 func init() {
 	backend.Register(Name, func(decode func(any) error) (backend.Backend, error) {
@@ -38,11 +43,14 @@ func init() {
 		}
 		return New(s, nil)
 	})
+	backend.RegisterKey(Name, keyInfo)
 }
 
-// Settings is the backends.gemini config section. The API key comes from
-// GEMINI_API_KEY or GOOGLE_API_KEY.
+// Settings is the backends.gemini config section.
 type Settings struct {
+	// APIKey is the Gemini API key. GEMINI_API_KEY or GOOGLE_API_KEY, when
+	// set, take precedence.
+	APIKey string `json:"api_key"`
 	// Model is used when the request does not name one (default
 	// DefaultModel).
 	Model string `json:"model"`
@@ -75,14 +83,10 @@ type Backend struct {
 
 // New creates a backend. A nil httpClient uses the SDK default.
 func New(s Settings, httpClient *http.Client) (*Backend, error) {
-	var key string
-	for _, env := range apiKeyEnv {
-		if key = os.Getenv(env); key != "" {
-			break
-		}
-	}
+	key, _ := keyInfo.Resolve(s.APIKey)
 	if key == "" {
-		return nil, errors.New("set GEMINI_API_KEY to a Gemini API key (create one at https://aistudio.google.com/apikey)")
+		return nil, fmt.Errorf("%w: save one with `rocket-chat --set-key gemini` (or /key gemini in the chat), "+
+			"or set GEMINI_API_KEY; create a key at %s", backend.ErrNoAPIKey, keyInfo.URL)
 	}
 	client, err := genai.NewClient(context.Background(), &genai.ClientConfig{
 		APIKey:      key,
@@ -252,7 +256,7 @@ func explain(ctx context.Context, err error, model string, searching bool) error
 	case apiErr.Code == http.StatusNotFound && model != "":
 		return fmt.Errorf("gemini model %q not found; see --list-models (%s)", model, msg)
 	case strings.Contains(lower, "api key"), apiErr.Code == http.StatusUnauthorized, apiErr.Code == http.StatusForbidden:
-		return fmt.Errorf("gemini rejected the API key; check GEMINI_API_KEY (%s)", msg)
+		return fmt.Errorf("gemini rejected the API key; check it (GEMINI_API_KEY, or the key saved with --set-key gemini) (%s)", msg)
 	case apiErr.Code == http.StatusTooManyRequests && searching:
 		return fmt.Errorf("gemini quota reached for a request grounded with Google Search; the key's plan may not "+
 			"include grounding (check billing at https://aistudio.google.com), or try --search=false (%s)", msg)

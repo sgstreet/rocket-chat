@@ -2,6 +2,7 @@ package gemini
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -279,7 +280,7 @@ func TestErrors(t *testing.T) {
 		search  *bool
 		want    string
 	}{
-		{400, "API key not valid. Please pass a valid API key.", nil, "check GEMINI_API_KEY"},
+		{400, "API key not valid. Please pass a valid API key.", nil, "rejected the API key"},
 		{404, "models/nope is not found", nil, `gemini model "nope" not found; see --list-models`},
 		{429, "Resource has been exhausted", nil, "may not include grounding"},
 		{429, "Resource has been exhausted", &off, "quota or rate limit reached; try again later"},
@@ -304,11 +305,14 @@ func TestErrors(t *testing.T) {
 }
 
 func TestMissingAPIKey(t *testing.T) {
-	for _, env := range apiKeyEnv {
+	for _, env := range keyInfo.Env {
 		t.Setenv(env, "")
 	}
-	if _, err := New(Settings{}, nil); err == nil || !strings.Contains(err.Error(), "GEMINI_API_KEY") {
+	if _, err := New(Settings{}, nil); !errors.Is(err, backend.ErrNoAPIKey) || !strings.Contains(err.Error(), "--set-key gemini") {
 		t.Errorf("err = %v", err)
+	}
+	if _, err := New(Settings{APIKey: "saved"}, nil); err != nil {
+		t.Errorf("saved key not accepted: %v", err)
 	}
 	t.Setenv("GOOGLE_API_KEY", "k")
 	if _, err := New(Settings{}, nil); err != nil {
