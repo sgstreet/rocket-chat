@@ -35,25 +35,25 @@ const defaultWebAPI = "https://ollama.com"
 type SearchSettings struct {
 	// Enabled turns web search on when the request does not say. Off by
 	// default because queries leave the machine.
-	Enabled bool `yaml:"enabled"`
+	Enabled bool `json:"enabled"`
 	// Mode is SearchAuto (default), SearchDirect or SearchLocal.
-	Mode string `yaml:"mode"`
+	Mode string `json:"mode"`
 	// APIURL is the base URL of the web search API used by SearchDirect
 	// (default https://ollama.com).
-	APIURL string `yaml:"api_url"`
+	APIURL string `json:"api_url"`
 	// MaxResults is the number of results per search, 1-10 (default 5).
-	MaxResults int `yaml:"max_results"`
+	MaxResults int `json:"max_results"`
 	// MaxRounds limits how many times the model may call tools in one
 	// reply (default 5).
-	MaxRounds int `yaml:"max_rounds"`
+	MaxRounds int `json:"max_rounds"`
 	// MaxResultChars truncates each search result (default 2000). The API
 	// returns whole pages; the model can web_fetch one to read more.
-	MaxResultChars int `yaml:"max_result_chars"`
+	MaxResultChars int `json:"max_result_chars"`
 	// MaxFetchChars truncates fetched pages (default 8000).
-	MaxFetchChars int `yaml:"max_fetch_chars"`
+	MaxFetchChars int `json:"max_fetch_chars"`
 	// NumCtx is the minimum context window while searching (default 32768);
 	// search results are long.
-	NumCtx int `yaml:"num_ctx"`
+	NumCtx int `json:"num_ctx"`
 }
 
 func (s SearchSettings) withDefaults() SearchSettings {

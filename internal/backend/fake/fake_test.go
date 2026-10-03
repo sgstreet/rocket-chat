@@ -11,6 +11,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend/backendtest"
 	"github.com/sgstreet/rocket-chat/internal/backend/fake"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/config"
 )
 
 var helloReq = backend.Request{Messages: []chat.Message{{Role: chat.RoleUser, Text: "hello there world"}}}
@@ -72,7 +73,7 @@ func TestRegistered(t *testing.T) {
 		t.Fatalf("Names() = %v, missing %q", backend.Names(), fake.Name)
 	}
 	b, err := backend.Open(fake.Name, func(v any) error {
-		v.(*fake.Settings).Delay = 5 * time.Millisecond
+		v.(*fake.Settings).Delay = config.Duration(5 * time.Millisecond)
 		return nil
 	})
 	if err != nil {

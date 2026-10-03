@@ -15,6 +15,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/backend/backendtest"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/config"
 )
 
 // fakeServer imitates the parts of the Ollama API the backend uses.
@@ -206,7 +207,7 @@ func TestChatStream(t *testing.T) {
 
 func TestChatRequest(t *testing.T) {
 	fs := newFakeServer(t, standardChunks...)
-	temp, numCtx, keep, think := 0.2, 32768, 10*time.Minute, false
+	temp, numCtx, keep, think := 0.2, 32768, config.Duration(10*time.Minute), false
 	b := newBackend(t, Settings{
 		Host:        strings.TrimPrefix(fs.URL, "http://"), // scheme is optional
 		Model:       "settings-model",
@@ -248,7 +249,7 @@ func TestChatRequest(t *testing.T) {
 	if got.Options["num_ctx"] != float64(numCtx) {
 		t.Errorf("num_ctx = %v", got.Options["num_ctx"])
 	}
-	if got.KeepAlive == nil || got.KeepAlive.Duration != keep {
+	if got.KeepAlive == nil || got.KeepAlive.Duration != time.Duration(keep) {
 		t.Errorf("keep_alive = %v", got.KeepAlive)
 	}
 	if got.Think == nil || got.Think.Value != false {

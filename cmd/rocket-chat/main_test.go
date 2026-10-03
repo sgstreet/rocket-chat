@@ -72,7 +72,7 @@ type result struct {
 // not a pipe or file.
 func cli(t *testing.T, ctx context.Context, stdin *string, args ...string) result {
 	t.Helper()
-	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.json"))
 	t.Setenv(config.EnvBackend, "")
 	var out, errOut bytes.Buffer
 	e := env{stdout: &out, stderr: &errOut}
@@ -240,7 +240,7 @@ func TestInlineCitationsWhenPiped(t *testing.T) {
 }
 
 func TestInlineCitationsOnTerminalStream(t *testing.T) {
-	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.json"))
 	var out, errOut bytes.Buffer
 	code := run(t.Context(), []string{"-b", "test-cited", "q"}, env{stdout: &out, stderr: &errOut, stdoutIsTerminal: true})
 	if code != exitOK || !strings.HasPrefix(out.String(), "Spain won. It was 2–1.\n\nSources:") {
@@ -272,7 +272,7 @@ func TestInterrupted(t *testing.T) {
 }
 
 func TestStdinThatNeverClosesIsInterruptible(t *testing.T) {
-	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.json"))
 	pr, pw := io.Pipe()
 	defer pw.Close()
 	ctx, cancel := context.WithCancel(t.Context())
@@ -380,8 +380,8 @@ func TestExpandHome(t *testing.T) {
 }
 
 func TestMissingConfigFlagIsAnError(t *testing.T) {
-	r := cli(t, t.Context(), nil, "--config", filepath.Join(t.TempDir(), "missing.yaml"), "-b", "fake", "q")
-	if r.code != exitError || !strings.Contains(r.errOut, "missing.yaml") {
+	r := cli(t, t.Context(), nil, "--config", filepath.Join(t.TempDir(), "missing.json"), "-b", "fake", "q")
+	if r.code != exitError || !strings.Contains(r.errOut, "missing.json") {
 		t.Errorf("got %+v", r)
 	}
 }
@@ -398,8 +398,8 @@ func TestJSONConfig(t *testing.T) {
 }
 
 func TestDefaultBackendFromConfig(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "config.yaml")
-	if err := os.WriteFile(path, []byte("default_backend: fake\n"), 0o600); err != nil {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte(`{"default_backend": "fake"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	r := cli(t, t.Context(), nil, "--config", path, "from", "config")

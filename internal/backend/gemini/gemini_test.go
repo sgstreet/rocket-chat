@@ -18,6 +18,7 @@ import (
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/backend/backendtest"
 	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/config"
 	"github.com/sgstreet/rocket-chat/internal/render"
 )
 
@@ -199,7 +200,7 @@ func TestRequest(t *testing.T) {
 		Model:       "gemini-3.8-flash",
 		Temperature: &temp,
 		Think:       &think,
-		Search:      SearchSettings{Since: 7 * 24 * time.Hour},
+		Search:      SearchSettings{Since: config.Duration(7 * 24 * time.Hour)},
 	})
 	req := backend.Request{
 		System: "be brief",

@@ -21,6 +21,7 @@ import (
 	modeltypes "github.com/ollama/ollama/types/model"
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
+	"github.com/sgstreet/rocket-chat/internal/config"
 )
 
 // Name is the name the backend is registered under.
@@ -40,20 +41,20 @@ func init() {
 type Settings struct {
 	// Host is the server URL. Defaults to $OLLAMA_HOST, then
 	// http://127.0.0.1:11434.
-	Host string `yaml:"host"`
+	Host string `json:"host"`
 	// Model is used when the request does not name one.
-	Model string `yaml:"model"`
+	Model string `json:"model"`
 	// Temperature overrides the model's default when set.
-	Temperature *float64 `yaml:"temperature"`
+	Temperature *float64 `json:"temperature"`
 	// NumCtx sets the context window size in tokens when non-zero.
-	NumCtx int `yaml:"num_ctx"`
+	NumCtx int `json:"num_ctx"`
 	// KeepAlive is how long the model stays loaded after a request.
-	KeepAlive *time.Duration `yaml:"keep_alive"`
+	KeepAlive *config.Duration `json:"keep_alive"`
 	// Think enables or disables reasoning for models that support it. When
 	// unset, the model's default applies.
-	Think *bool `yaml:"think"`
+	Think *bool `json:"think"`
 	// Search configures Ollama web search.
-	Search SearchSettings `yaml:"search"`
+	Search SearchSettings `json:"search"`
 }
 
 // Backend talks to an Ollama server.
@@ -353,7 +354,7 @@ func (b *Backend) chatRequest(model string, req backend.Request) *api.ChatReques
 		cr.Think = &api.ThinkValue{Value: *think}
 	}
 	if b.settings.KeepAlive != nil {
-		cr.KeepAlive = &api.Duration{Duration: *b.settings.KeepAlive}
+		cr.KeepAlive = &api.Duration{Duration: time.Duration(*b.settings.KeepAlive)}
 	}
 	return cr
 }
