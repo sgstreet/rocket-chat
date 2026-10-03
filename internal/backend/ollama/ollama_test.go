@@ -296,10 +296,11 @@ func TestServerDown(t *testing.T) {
 	fs := newFakeServer(t)
 	url := fs.URL
 	fs.Close()
-	b := newBackend(t, Settings{Host: url})
+	off := false
+	b := newBackend(t, Settings{Host: url, Serve: ServeSettings{AutoStart: &off}})
 	err := chatErr(t, b, helloReq)
-	if !strings.Contains(err.Error(), "is `ollama serve` running?") {
-		t.Errorf("error = %v, want server hint", err)
+	if !strings.Contains(err.Error(), "is `ollama serve` running?") || !strings.Contains(err.Error(), "serve.auto_start") {
+		t.Errorf("error = %v, want server and auto_start hints", err)
 	}
 }
 

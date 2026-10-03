@@ -4,6 +4,7 @@ package backend
 
 import (
 	"context"
+	"io"
 	"iter"
 
 	"github.com/sgstreet/rocket-chat/internal/chat"
@@ -76,6 +77,9 @@ const (
 	EventGrounding
 	// EventUsage carries token counts in Usage.
 	EventUsage
+	// EventNotice carries a message for the user in Text, such as a local
+	// server being started.
+	EventNotice
 	// EventDone is always the last event of a successful stream.
 	EventDone
 )
@@ -94,6 +98,8 @@ func (k EventKind) String() string {
 		return "Grounding"
 	case EventUsage:
 		return "Usage"
+	case EventNotice:
+		return "Notice"
 	case EventDone:
 		return "Done"
 	}
@@ -108,6 +114,15 @@ type Event struct {
 	URL       string
 	Grounding *chat.Grounding
 	Usage     *Usage
+}
+
+// Close releases what a backend holds, such as a server it started, when
+// the backend implements io.Closer.
+func Close(b Backend) error {
+	if c, ok := b.(io.Closer); ok {
+		return c.Close()
+	}
+	return nil
 }
 
 // Usage reports token counts for one reply.

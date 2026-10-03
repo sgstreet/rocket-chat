@@ -151,6 +151,8 @@ func (m *model) handleStream(sm streamMsg) tea.Cmd {
 		e.activity = append(e.activity, "Searching: "+ev.Query)
 	case backend.EventFetchStarted:
 		e.activity = append(e.activity, "Reading: "+ev.URL)
+	case backend.EventNotice:
+		e.activity = append(e.activity, ev.Text)
 	case backend.EventGrounding:
 		e.msg.Grounding = ev.Grounding
 	case backend.EventUsage:

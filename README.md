@@ -120,6 +120,18 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `search.max_fetch_chars` | `8000` | Fetched pages are cut to this |
 | `search.num_ctx` | `32768` | Minimum context window while searching |
 | `search.api_url` | `https://ollama.com` | Web search API for `direct` mode |
+| `serve.auto_start` | `true` | Start `ollama serve` when no server answers at a local host, and stop it on exit |
+| `serve.command` | `ollama` | The ollama executable, found in `PATH` |
+| `serve.start_timeout` | `"30s"` | How long to wait for a started server to answer |
+
+### Starting Ollama automatically
+
+When the Ollama host is this machine (`localhost`, `127.0.0.1` or `::1`) and nothing answers there,
+rocket-chat runs `ollama serve` for that address, says so, waits until it answers, and stops it when
+rocket-chat exits. A server that was already running is used and left running; remote hosts are
+never started. The started server's output goes to `rocket-chat/ollama-serve.log` in the user cache
+directory (`~/.cache` on Linux). Set `"serve": {"auto_start": false}` to turn this off.
+
 
 ### Ollama web search
 

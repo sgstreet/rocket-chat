@@ -7,13 +7,11 @@ import (
 	"errors"
 	"fmt"
 	"iter"
-	"net"
 	"net/http"
 	"net/url"
 	"slices"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 
 	"github.com/ollama/ollama/api"
@@ -55,6 +53,8 @@ type Settings struct {
 	Think *bool `json:"think"`
 	// Search configures Ollama web search.
 	Search SearchSettings `json:"search"`
+	// Serve configures starting a local server when none is running.
+	Serve ServeSettings `json:"serve"`
 }
 
 // Backend talks to an Ollama server.
@@ -66,6 +66,63 @@ type Backend struct {
 	now      func() time.Time
 	// toolSupport caches whether each model supports tool calling.
 	toolSupport sync.Map
+
+	// serveMu guards the local server state.
+	serveMu sync.Mutex
+	// ready is set once the server has answered.
+	ready bool
+	// server is the server this backend started, stopped by Close.
+	server *localServer
+}
+
+// ensureServer makes sure the server answers before a request, starting a
+// local one when it is not running and auto-start is on. It returns a
+// notice for the user when it started one.
+func (b *Backend) ensureServer(ctx context.Context) (string, error) {
+	b.serveMu.Lock()
+	defer b.serveMu.Unlock()
+	if b.ready {
+		return "", nil
+	}
+	err := b.ping(ctx)
+	switch {
+	case err == nil:
+		b.ready = true
+		return "", nil
+	case !isUnreachable(err) || !b.settings.Serve.autoStart() || !isLocal(b.host):
+		// The request itself reports the problem.
+		return "", nil
+	}
+	srv, err := startServer(ctx, b.settings.Serve, b.host, b.ping)
+	if err != nil {
+		return "", err
+	}
+	b.ready = true
+	if srv == nil {
+		return "", nil
+	}
+	b.server = srv
+	return fmt.Sprintf("Started a local Ollama server at %s; it stops when rocket-chat exits.", b.host), nil
+}
+
+// ping checks that the server answers.
+func (b *Backend) ping(ctx context.Context) error {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+	return b.client.Heartbeat(ctx)
+}
+
+// Close stops the local server if this backend started it. A server that
+// was already running is left alone.
+func (b *Backend) Close() error {
+	b.serveMu.Lock()
+	defer b.serveMu.Unlock()
+	if b.server != nil {
+		b.server.stop()
+		b.server = nil
+	}
+	b.ready = false
+	return nil
 }
 
 // New creates a backend. A nil httpClient uses http.DefaultClient.
@@ -106,6 +163,9 @@ func (b *Backend) Capabilities() backend.Capabilities {
 }
 
 func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {
+	if _, err := b.ensureServer(ctx); err != nil {
+		return nil, err
+	}
 	resp, err := b.client.List(ctx)
 	if err != nil {
 		return nil, b.explain(ctx, err, "")
@@ -132,6 +192,14 @@ var errStopped = errors.New("stopped")
 
 func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backend.Event, error] {
 	return func(yield func(backend.Event, error) bool) {
+		notice, err := b.ensureServer(ctx)
+		if err != nil {
+			yield(backend.Event{}, err)
+			return
+		}
+		if notice != "" && !yield(backend.Event{Kind: backend.EventNotice, Text: notice}, nil) {
+			return
+		}
 		model := cmp.Or(req.Model, b.settings.Model)
 		if model == "" {
 			yield(backend.Event{}, b.noModelError(ctx))
@@ -146,7 +214,7 @@ func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backe
 			}
 			return nil
 		}
-		err := b.chat(ctx, model, req, emit)
+		err = b.chat(ctx, model, req, emit)
 		if err != nil && !stopped {
 			yield(backend.Event{}, b.explain(ctx, err, model))
 		}
@@ -368,9 +436,17 @@ func (b *Backend) explain(ctx context.Context, err error, model string) error {
 	if errors.As(err, &status) && status.StatusCode == http.StatusNotFound && model != "" {
 		return fmt.Errorf("model %q not found on %s; download it with `ollama pull %s`", model, b.host, model)
 	}
-	var opErr *net.OpError
-	if errors.Is(err, syscall.ECONNREFUSED) || (errors.As(err, &opErr) && opErr.Op == "dial") {
-		return fmt.Errorf("cannot reach Ollama at %s (is `ollama serve` running?): %w", b.host, err)
+	if isUnreachable(err) {
+		// The server went away; check again, and start one if allowed,
+		// before the next request.
+		b.serveMu.Lock()
+		b.ready = false
+		b.serveMu.Unlock()
+		hint := "is `ollama serve` running?"
+		if isLocal(b.host) && !b.settings.Serve.autoStart() {
+			hint += " rocket-chat can start it: set backends.ollama.serve.auto_start to true"
+		}
+		return fmt.Errorf("cannot reach Ollama at %s (%s): %w", b.host, hint, err)
 	}
 	return err
 }
