@@ -38,10 +38,8 @@ Run `rocket-chat` with no prompt for the interactive chat:
   `set -g set-clipboard on`.
 - Switching from Gemini to another backend keeps the conversation, but answers grounded with
   Google Search are not sent to the other backend (Gemini API terms).
-- Chats are saved after every reply. `/sessions` lists them, `/resume [number]` continues one,
-  `/export [file]` writes the chat as Markdown, and `rocket-chat --resume last` (or a session ID)
-  reopens one from the command line. `-b`, `-m` and `-s` override the saved backend, model and
-  system prompt.
+- Chats are saved after every reply, in `~/.local/share/rocket-chat/sessions/` (see
+  [Saved chats](#saved-chats)).
 
 Give a prompt for a single answer on stdout:
 
@@ -55,6 +53,27 @@ git diff | rocket-chat -b ollama -m qwen3 -p "write a commit message"
   terminal; `-v` also prints token usage and timing, and `--thinking` prints the model's reasoning.
 - `--search` / `--search=false` overrides the backend's web search default.
 - Exit codes: 0 success, 1 error, 2 usage error, 130 interrupted (Ctrl+C).
+
+## Saved chats
+
+Interactive chats are saved after every reply, one JSON file per chat, in:
+
+```
+~/.local/share/rocket-chat/sessions/
+```
+
+That is the default on Linux, macOS and Windows (`C:\Users\<you>\.local\share\rocket-chat\sessions`).
+If `$XDG_DATA_HOME` is set, the directory is `$XDG_DATA_HOME/rocket-chat/sessions/` instead, and
+`sessions.dir` in the config file overrides both.
+
+- Files are named by the time the chat started (UTC), e.g. `20261003-174512-a1b2c3.json`, and hold the
+  messages, backend, model, role or system prompt, and any Gemini sources.
+- The directory is readable only by you (mode 700) and each file is mode 600.
+- One-shot answers (`rocket-chat "question"`) are not saved.
+- `/sessions` lists saved chats, `/resume [number]` continues one, and `/export [file]` writes the
+  current chat as Markdown. `rocket-chat --resume last` (or a session ID) reopens one from the
+  command line; `-b`, `-m` and `-s` override its saved backend, model and system prompt.
+- To delete a chat, delete its file. To stop saving, set `"sessions": {"save": false}`.
 
 ## Roles
 
@@ -162,7 +181,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `default_backend` | `ollama` | Backend used when `-b` is not given |
 | `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
 | `sessions.save` | `true` | Save interactive chats |
-| `sessions.dir` | `$XDG_DATA_HOME/rocket-chat/sessions` | Where chats are saved; `~` is expanded |
+| `sessions.dir` | `~/.local/share/rocket-chat/sessions` (or `$XDG_DATA_HOME/rocket-chat/sessions`) | Where chats are saved; `~` is expanded |
 
 `backends.ollama`:
 
