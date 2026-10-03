@@ -20,7 +20,6 @@ const helpText = `Commands:
   /system [text|clear]   show the current prompt and list roles, or set or clear a custom one
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
-  /mouse on|off          mouse handled here (scroll, select to copy, click links) or by the terminal
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -34,8 +33,10 @@ Keys: enter sends · alt+enter or ctrl+j adds a line · esc stops an answer
       up/down (or ctrl+p/ctrl+n) recall earlier inputs, which can be edited before sending
       tab completes commands and their arguments; press it again to cycle, shift+tab goes back
       pgup/pgdn, shift+up/down and the mouse wheel scroll · ctrl+t shows reasoning
-      drag to select text, which is copied · click a link to open it
-      ctrl+v or the middle button pastes`
+Mouse: drag to select text, which is copied · click a link to open it
+      ctrl+v or the middle button pastes
+      click the conversation to scroll it with the keys (up/down, pgup/pgdn, home/end);
+      click the input box, press esc or start typing to go back to it`
 
 // modelsMsg carries the result of listing models for /model.
 type modelsMsg struct {
@@ -85,8 +86,6 @@ func (m *model) command(line string) tea.Cmd {
 		m.setSearch(arg)
 	case "key", "keys":
 		return m.keyCommand(arg)
-	case "mouse":
-		m.setMouse(arg)
 	case "retry":
 		return m.retry()
 	default:
@@ -291,25 +290,6 @@ func (m *model) showRole(name string) {
 	}
 	b.WriteString("\n\n" + r.Prompt)
 	m.notice("%s", b.String())
-}
-
-func (m *model) setMouse(arg string) {
-	switch arg {
-	case "on":
-		m.mouse = true
-		m.notice("Mouse on: the wheel scrolls, dragging selects and copies text, clicking a link opens it, and the middle button pastes.")
-	case "off":
-		m.mouse = false
-		m.notice("Mouse off: the terminal selects text and opens links itself; scroll with PgUp/PgDn.")
-	case "":
-		state := "off"
-		if m.mouse {
-			state = "on"
-		}
-		m.notice("Mouse is %s. Use /mouse on or /mouse off.", state)
-	default:
-		m.errorf("Use /mouse on or /mouse off.")
-	}
 }
 
 func (m *model) setSearch(arg string) {
