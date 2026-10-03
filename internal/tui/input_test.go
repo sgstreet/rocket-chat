@@ -248,19 +248,11 @@ func TestMouse(t *testing.T) {
 	}
 
 	h.typeAndSend("/mouse off")
-	if h.m.View().MouseMode != tea.MouseModeNone || !strings.Contains(h.last(entryNotice).text, "selects text") {
-		t.Error("/mouse off")
+	if !strings.Contains(h.last(entryError).text, "Unknown command /mouse") {
+		t.Error("/mouse should be gone; the mouse is set with ui.mouse")
 	}
-	h.typeAndSend("/mouse")
-	if !strings.Contains(h.last(entryNotice).text, "Mouse is off") {
-		t.Error("/mouse status")
-	}
-	h.typeAndSend("/mouse on")
-	if h.m.View().MouseMode != tea.MouseModeCellMotion {
-		t.Error("/mouse on")
-	}
-	h.typeAndSend("/mouse sideways")
-	if !strings.Contains(h.last(entryError).text, "/mouse on or /mouse off") {
-		t.Error("bad /mouse argument")
+	off := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake"})
+	if off.m.View().MouseMode != tea.MouseModeNone {
+		t.Error("mouse captured with Mouse off")
 	}
 }

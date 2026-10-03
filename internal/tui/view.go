@@ -204,6 +204,8 @@ func (m *model) helpLine() string {
 		help = " " + m.flash
 	case m.complHint != "":
 		help = " tab: " + m.complHint
+	case m.focus == focusTranscript:
+		help = " conversation: ↑↓ pgup/pgdn home/end scroll · drag copies · click links · type or esc to return"
 	case m.mouse:
 		help = " enter send · alt+enter newline · ↑↓ history · tab complete · wheel scrolls · /help · ctrl+c quit"
 	default:

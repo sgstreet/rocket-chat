@@ -8,7 +8,7 @@ import (
 // commands are the slash commands Tab completes, in the order /help lists
 // them.
 var commands = []string{
-	"backend", "model", "role", "system", "search", "key", "mouse", "thinking",
+	"backend", "model", "role", "system", "search", "key", "thinking",
 	"retry", "new", "sessions", "resume", "export", "copy", "help", "quit",
 }
 
@@ -123,8 +123,6 @@ func (m *model) argOptions(cmd string, before []string) []string {
 			if m.opts.Keys != nil {
 				return m.opts.Keys.Names()
 			}
-		case "mouse":
-			return []string{"on", "off"}
 		case "copy":
 			return []string{"code"}
 		}

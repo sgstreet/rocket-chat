@@ -139,6 +139,9 @@ type model struct {
 	// flash is a short message shown in the help line until the next key
 	// or click, such as "copied 42 characters".
 	flash string
+	// focus is where keys go: the input box, or the conversation after it
+	// is clicked.
+	focus focusArea
 
 	spinner spinner.Model
 	width   int
@@ -299,6 +302,11 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.compl, m.complHint = nil, ""
 	}
 	m.sel, m.flash = nil, ""
+	if m.focus == focusTranscript {
+		if cmd, handled := m.transcriptKey(msg); handled {
+			return cmd, true
+		}
+	}
 	switch k {
 	case "ctrl+v":
 		return m.paste(), true

@@ -55,15 +55,25 @@ func (m *model) handleMouse(msg tea.Msg) tea.Cmd {
 	switch msg := msg.(type) {
 	case tea.MouseClickMsg:
 		m.flash = ""
+		m.sel = nil
 		switch {
 		case msg.Button == tea.MouseMiddle:
+			if m.keyFor == "" {
+				return tea.Batch(m.setFocus(focusInput), m.paste())
+			}
 			return m.paste()
-		case msg.Button != tea.MouseLeft || msg.Y >= m.viewport.Height():
-			m.sel = nil
+		case msg.Button != tea.MouseLeft:
 			return nil
+		case msg.Y < m.viewport.Height():
+			// Focus moves to the conversation once this turns out to be
+			// a drag, or a click that is not on a link.
+			p := m.contentPos(msg.X, msg.Y)
+			m.sel = &selection{anchor: p, head: p, dragging: true}
+		case m.keyFor == "" && msg.Y >= m.inputTop() && msg.Y < m.inputTop()+inputHeight:
+			cmd := m.setFocus(focusInput)
+			m.placeCursor(msg.Y-m.inputTop(), msg.X)
+			return cmd
 		}
-		p := m.contentPos(msg.X, msg.Y)
-		m.sel = &selection{anchor: p, head: p, dragging: true}
 
 	case tea.MouseMotionMsg:
 		if m.sel == nil || !m.sel.dragging {
@@ -79,6 +89,9 @@ func (m *model) handleMouse(msg tea.Msg) tea.Cmd {
 		p := m.contentPos(msg.X, msg.Y)
 		if p != m.sel.head {
 			m.sel.head, m.sel.moved = p, true
+			if m.keyFor == "" {
+				return m.setFocus(focusTranscript)
+			}
 		}
 
 	case tea.MouseReleaseMsg:
@@ -87,13 +100,17 @@ func (m *model) handleMouse(msg tea.Msg) tea.Cmd {
 		}
 		m.sel.dragging = false
 		if !m.sel.moved {
-			// A click: open the link under the pointer, if any.
+			// A click: open the link under the pointer, leaving the focus
+			// where it is, or else focus the conversation.
 			p := m.sel.anchor
 			m.sel = nil
 			if p.line < len(m.lines) {
 				if link := linkAt(m.lines[p.line], p.col); link != "" {
 					return m.openLink(link)
 				}
+			}
+			if m.keyFor == "" {
+				return m.setFocus(focusTranscript)
 			}
 			return nil
 		}

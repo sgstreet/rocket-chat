@@ -36,7 +36,7 @@ Run `rocket-chat` with no prompt for the interactive chat:
   multi-line input, Up and Down move between lines first.
 - Tab completes commands and their arguments: `/ba` → `/backend `, `/role show te` →
   `/role show technical`, `/backend `, `/model ` (after `/model` has listed the models), `/search `,
-  `/key `, `/mouse `. With several matches the bottom line lists them and Tab (Shift+Tab backwards)
+  `/key `. With several matches the bottom line lists them and Tab (Shift+Tab backwards)
   cycles through them.
 - Copy and paste with the mouse on (the default):
   - Drag over the conversation to select text; it is copied to the clipboard when you let go.
@@ -48,11 +48,14 @@ Run `rocket-chat` with no prompt for the interactive chat:
   - Copying uses the terminal (OSC 52, which also works over SSH) and the system clipboard where
     there is one, so it works in terminals without OSC 52 such as GNOME Terminal. Pasting reads the
     system clipboard, or asks the terminal over OSC 52 when there is none.
-  - `/mouse off` hands the mouse back to the terminal for the rest of the chat (its own selection,
-    link clicking and paste); `"ui": {"mouse": false}` makes that the default. With the mouse on, most
-    terminals still do their own selection while Shift is held.
+  - Most terminals still do their own selection while Shift is held. To leave the mouse to the
+    terminal entirely, set `"ui": {"mouse": false}`.
+- Click to choose where keys go. Clicking the conversation lets Up/Down, PgUp/PgDn and Home/End
+  scroll it (the bottom line says so); clicking the input box, pressing Esc or Enter, or just typing
+  goes back to the input. Clicking inside the input puts the cursor there, in multi-line input too.
+  Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/role`, `/system`, `/search on|off|default`, `/key`, `/mouse on|off`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/system`, `/search on|off|default`, `/key`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
