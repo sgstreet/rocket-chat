@@ -60,11 +60,16 @@ type env struct {
 	// darkBackground reports whether the terminal background is dark; it
 	// is only asked when --render needs to pick a style.
 	darkBackground func() bool
+	// statePath is where the last role chosen with /role is kept; "" turns
+	// remembering it off.
+	statePath string
 }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	statePath, _ := store.DefaultStatePath()
 	code := run(ctx, os.Args[1:], env{
+		statePath:        statePath,
 		stdin:            os.Stdin,
 		stdout:           os.Stdout,
 		stderr:           os.Stderr,
@@ -182,8 +187,13 @@ Flags:
 	if err != nil {
 		return fail(e, fmt.Errorf("%s: %w", cfgPath, err))
 	}
+	last := loadState(e)
 	if o.listRoles {
-		return listRoles(e, lib, cfg.DefaultRole)
+		start, _, err := selectRole(options{}, cfg, lib, last)
+		if err != nil {
+			return fail(e, err)
+		}
+		return listRoles(e, lib, start)
 	}
 	if o.showRole != "" {
 		r, ok := lib.Find(o.showRole)
@@ -197,23 +207,9 @@ Flags:
 		fmt.Fprintln(e.stderr, "rocket-chat: give either --role or -s, not both")
 		return exitUsage
 	}
-	// An explicit --role, or the configured default when no system prompt
-	// was given.
-	roleName := o.role
-	if roleName == "" && o.system == "" {
-		roleName = cfg.DefaultRole
-	}
-	var role *roles.Role
-	if roleName != "" {
-		r, ok := lib.Find(roleName)
-		if !ok {
-			return fail(e, fmt.Errorf("unknown role %q (available: %s)", roleName, strings.Join(lib.Names(), ", ")))
-		}
-		role = &r
-	}
-	system := o.system
-	if role != nil {
-		system = role.Prompt
+	role, system, err := selectRole(o, cfg, lib, last)
+	if err != nil {
+		return fail(e, err)
 	}
 
 	name := o.backend
@@ -261,13 +257,16 @@ Flags:
 			return fail(e, err)
 		}
 		opts := tui.Options{
-			Keys:     keys,
-			Backend:  name,
-			Model:    o.model,
-			System:   system,
-			Search:   search,
-			Roles:    lib,
-			Role:     roleID(role),
+			Keys:    keys,
+			Backend: name,
+			Model:   o.model,
+			System:  system,
+			Search:  search,
+			Roles:   lib,
+			Role:    roleID(role),
+			RememberRole: func(id, prompt string) error {
+				return rememberRole(e, id, prompt)
+			},
 			Open:     open,
 			Backends: backend.Names(),
 		}
@@ -471,12 +470,89 @@ func loadConfig(path string, stderr io.Writer) (config.Config, string, error) {
 	return cfg, path, err
 }
 
-func listRoles(e env, lib *roles.Library, defaultRole string) int {
-	def, _ := lib.Find(defaultRole)
+// selectRole picks the system prompt a run starts with: --role or -s;
+// otherwise the role last chosen with /role; otherwise default_role, which
+// is the General Assistant when unset. It returns the role (nil for a
+// custom prompt or none) and the prompt text.
+func selectRole(o options, cfg config.Config, lib *roles.Library, last store.State) (*roles.Role, string, error) {
+	find := func(name string) (*roles.Role, string, error) {
+		r, ok := lib.Find(name)
+		if !ok {
+			return nil, "", fmt.Errorf("unknown role %q (available: %s, or off)", name, strings.Join(lib.Names(), ", "))
+		}
+		return &r, r.Prompt, nil
+	}
+	switch {
+	case o.role != "" && roleOff(o.role):
+		return nil, "", nil
+	case o.role != "":
+		return find(o.role)
+	case o.system != "":
+		return nil, o.system, nil
+	}
+	switch {
+	case last.Role == store.RoleOff:
+		return nil, "", nil
+	case last.Role == store.RoleCustom && last.Prompt != "":
+		return nil, last.Prompt, nil
+	case last.Role != "":
+		// A role removed from the config since is skipped.
+		if r, ok := lib.Find(last.Role); ok {
+			return &r, r.Prompt, nil
+		}
+	}
+	def := cmp.Or(cfg.DefaultRole, "general")
+	if roleOff(def) {
+		return nil, "", nil
+	}
+	r, p, err := find(def)
+	if err != nil {
+		return nil, "", fmt.Errorf("default_role: %w", err)
+	}
+	return r, p, nil
+}
+
+func roleOff(name string) bool {
+	return name == store.RoleOff || name == "none"
+}
+
+// loadState reads the remembered state; a broken file is reported and
+// ignored.
+func loadState(e env) store.State {
+	if e.statePath == "" {
+		return store.State{}
+	}
+	s, err := store.LoadState(e.statePath)
+	if err != nil {
+		fmt.Fprintf(e.stderr, "rocket-chat: ignoring %s: %v\n", e.statePath, err)
+		return store.State{}
+	}
+	return s
+}
+
+// rememberRole saves the role chosen with /role: id for a named role, or
+// a custom prompt, or neither for no prompt.
+func rememberRole(e env, id, prompt string) error {
+	if e.statePath == "" {
+		return nil
+	}
+	s := store.State{Role: id}
+	switch {
+	case id != "":
+	case prompt != "":
+		s = store.State{Role: store.RoleCustom, Prompt: prompt}
+	default:
+		s.Role = store.RoleOff
+	}
+	return store.SaveState(e.statePath, s)
+}
+
+// listRoles prints the roles, marking the one a new chat starts with.
+func listRoles(e env, lib *roles.Library, start *roles.Role) int {
 	w := tabwriter.NewWriter(e.stdout, 0, 0, 2, ' ', 0)
 	for _, r := range lib.List() {
 		marker := " "
-		if defaultRole != "" && r.ID == def.ID {
+		if start != nil && r.ID == start.ID {
 			marker = "*"
 		}
 		fmt.Fprintf(w, "%s %s\t%s\t%s\n", marker, r.ID, r.Name, r.Description)

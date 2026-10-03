@@ -607,3 +607,123 @@ func TestRenderKeepsCitations(t *testing.T) {
 		t.Errorf("got %+v", r)
 	}
 }
+
+func TestSelectRole(t *testing.T) {
+	lib := roles.Builtin()
+	tech, _ := lib.Find("technical")
+	gen, _ := lib.Find("general")
+	id := func(r *roles.Role) string {
+		if r == nil {
+			return ""
+		}
+		return r.ID
+	}
+	tests := []struct {
+		name       string
+		o          options
+		def        string
+		last       store.State
+		wantRole   string
+		wantPrompt string
+		wantErr    string
+	}{
+		{name: "default is general", wantRole: "general", wantPrompt: gen.Prompt},
+		{name: "default_role", def: "technical", wantRole: "technical", wantPrompt: tech.Prompt},
+		{name: "default_role off", def: "off"},
+		{name: "default_role none", def: "none"},
+		{name: "unknown default_role", def: "lawyer", wantErr: `default_role: unknown role "lawyer"`},
+		{name: "last role", def: "research", last: store.State{Role: "technical"}, wantRole: "technical", wantPrompt: tech.Prompt},
+		{name: "last custom", last: store.State{Role: store.RoleCustom, Prompt: "Be brief."}, wantPrompt: "Be brief."},
+		{name: "last off", last: store.State{Role: store.RoleOff}},
+		{name: "last role removed", def: "technical", last: store.State{Role: "gone"}, wantRole: "technical", wantPrompt: tech.Prompt},
+		{name: "--role wins", o: options{role: "Technical Adviser"}, last: store.State{Role: store.RoleOff}, wantRole: "technical", wantPrompt: tech.Prompt},
+		{name: "--role off", o: options{role: "off"}, last: store.State{Role: "technical"}},
+		{name: "-s wins", o: options{system: "Talk like a pirate."}, last: store.State{Role: "technical"}, wantPrompt: "Talk like a pirate."},
+		{name: "unknown --role", o: options{role: "lawyer"}, wantErr: `unknown role "lawyer"`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, prompt, err := selectRole(tt.o, config.Config{DefaultRole: tt.def}, lib, tt.last)
+			if tt.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+					t.Errorf("err = %v, want %q", err, tt.wantErr)
+				}
+				return
+			}
+			if err != nil || id(r) != tt.wantRole || prompt != tt.wantPrompt {
+				t.Errorf("got %q %q %v, want %q %q", id(r), prompt, err, tt.wantRole, tt.wantPrompt)
+			}
+		})
+	}
+}
+
+func TestRememberedRole(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	var errOut bytes.Buffer
+	e := env{statePath: path, stderr: &errOut}
+
+	if s := loadState(e); s != (store.State{}) {
+		t.Errorf("no file: %+v", s)
+	}
+	for _, tt := range []struct {
+		id, prompt string
+		want       store.State
+	}{
+		{"technical", "prompt text", store.State{Role: "technical"}},
+		{"", "Be brief.", store.State{Role: store.RoleCustom, Prompt: "Be brief."}},
+		{"", "", store.State{Role: store.RoleOff}},
+	} {
+		if err := rememberRole(e, tt.id, tt.prompt); err != nil {
+			t.Fatal(err)
+		}
+		if got := loadState(e); got != tt.want {
+			t.Errorf("remember(%q, %q) = %+v, want %+v", tt.id, tt.prompt, got, tt.want)
+		}
+	}
+
+	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if s := loadState(e); s != (store.State{}) || !strings.Contains(errOut.String(), "ignoring") {
+		t.Errorf("broken file: %+v, stderr %q", s, errOut.String())
+	}
+	// Without a path nothing is read or written.
+	if err := rememberRole(env{}, "technical", ""); err != nil {
+		t.Error(err)
+	}
+}
+
+func TestListRolesMarksStartingRole(t *testing.T) {
+	r := cli(t, t.Context(), nil, "--list-roles")
+	if r.code != exitOK || !strings.Contains(r.out, "* general") {
+		t.Errorf("default: %+v", r)
+	}
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	if err := store.SaveState(statePath, store.State{Role: "research"}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "config.json"))
+	var out, errOut bytes.Buffer
+	if code := run(t.Context(), []string{"--list-roles"}, env{stdout: &out, stderr: &errOut, statePath: statePath}); code != exitOK {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if !strings.Contains(out.String(), "* research") || strings.Contains(out.String(), "* general") {
+		t.Errorf("last role not marked:\n%s", out.String())
+	}
+}
+
+func TestOneShotUsesRememberedRole(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	if err := store.SaveState(statePath, store.State{Role: store.RoleCustom, Prompt: "Be brief."}); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "config.json"))
+	recorder = &fake.Backend{}
+	var out, errOut bytes.Buffer
+	if code := run(t.Context(), []string{"-b", "test-record", "q"}, env{stdout: &out, stderr: &errOut, statePath: statePath}); code != exitOK {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if got := recorder.Requests()[0].System; got != "Be brief." {
+		t.Errorf("system = %q", got)
+	}
+}

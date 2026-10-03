@@ -135,6 +135,17 @@ On the command line, `--role technical` (or `-r`) picks a role, `-s "text"` give
 instead, `--list-roles` lists them and `--show-role technical` prints one, ready to save to a file and
 edit. Saved chats remember their role or custom prompt.
 
+Which prompt a run starts with:
+
+1. `--role <name>` or `-s "text"`, if given (`--role off` for none).
+2. Otherwise the role you last chose with `/role`, including `/role custom <text>` and `/role off`.
+   It is kept in `~/.local/share/rocket-chat/state.json` and applies to new chats and one-shot
+   answers alike; `--list-roles` marks it with `*`.
+3. Otherwise `default_role` from `config.json`: the General Assistant unless you set another role,
+   or `"off"` for no system prompt.
+
+A resumed chat keeps the role it was saved with.
+
 Add your own, or replace a built-in by reusing its ID, in `config.json`. Long prompts can live in a
 file, relative to the config file's directory:
 
@@ -170,7 +181,8 @@ search on with it.
 | `file` | A file holding the system prompt, instead of `prompt` |
 | `search` | `true` or `false` turns web search on or off while the role is in use, unless `--search` or `/search` says otherwise; leave it out to keep the backend's default |
 
-`default_role` applies when neither `--role` nor `-s` is given.
+`default_role` (default `general`) is the role used until you choose one with `/role`; `"off"` means
+no system prompt.
 
 ### Prompts in files
 

@@ -14,7 +14,7 @@ import (
 // settings, plus empty API keys to show where they go.
 const DefaultFile = `{
   "default_backend": "ollama",
-  "default_role": "",
+  "default_role": "general",
   "backends": {
     "ollama": {
       "api_key": "",

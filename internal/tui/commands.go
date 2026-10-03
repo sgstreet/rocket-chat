@@ -262,6 +262,11 @@ func (m *model) useRole(id, prompt string) {
 	if !m.searchSet {
 		m.search = nil
 	}
+	if m.opts.RememberRole != nil {
+		if err := m.opts.RememberRole(id, prompt); err != nil {
+			m.errorf("The role will not be remembered: %v", err)
+		}
+	}
 }
 
 // writeCurrent describes the prompt in use, with its full text.
