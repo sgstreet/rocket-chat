@@ -37,7 +37,7 @@ func TestRoleCommand(t *testing.T) {
 	h.typeAndSend("/role Technical Adviser")
 	tech, _ := roles.Builtin().Find("technical")
 	h.typeAndSend("/system")
-	if list := h.last(entryNotice).text; !strings.Contains(list, "role Technical Adviser") || !strings.Contains(list, "* technical") {
+	if list := h.last(entryNotice).text; !strings.Contains(list, "from the role Technical Adviser:\n\n"+tech.Prompt) || !strings.Contains(list, "* technical") {
 		t.Errorf("/system with a role:\n%s", list)
 	}
 	if h.m.role != "technical" || h.m.system != tech.Prompt {
@@ -69,7 +69,7 @@ func TestRoleCommand(t *testing.T) {
 
 	h.typeAndSend("/system be terse")
 	h.typeAndSend("/system")
-	if list := h.last(entryNotice).text; !strings.Contains(list, "(custom): be terse") || strings.Contains(list, "*") {
+	if list := h.last(entryNotice).text; !strings.Contains(list, "(custom):\n\nbe terse") || strings.Contains(list, "*") {
 		t.Errorf("/system with a custom prompt:\n%s", list)
 	}
 	if h.m.role != "" || !strings.Contains(h.view(), "custom system prompt") {
@@ -140,5 +140,35 @@ func TestRoleSavedWithSession(t *testing.T) {
 	h2 := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", Store: st, Resume: sess})
 	if h2.m.role != "technical" || !strings.Contains(h2.view(), "role: Technical Adviser") {
 		t.Errorf("resumed role %q", h2.m.role)
+	}
+}
+
+func TestRoleShow(t *testing.T) {
+	h := newHarness(t, map[string]*fake.Backend{"fake": searchBackend()}, "fake")
+	research, _ := roles.Builtin().Find("research")
+
+	h.typeAndSend("/role show")
+	if !strings.Contains(h.last(entryError).text, "No role is in use") {
+		t.Error("/role show without a role")
+	}
+	h.typeAndSend("/role show Research Assistant")
+	out := h.last(entryNotice).text
+	if !strings.HasPrefix(out, "Research Assistant (research) — ") || !strings.Contains(out, "Turns web search on.") ||
+		!strings.HasSuffix(out, "\n\n"+research.Prompt) {
+		t.Errorf("show research:\n%s", out)
+	}
+	if h.m.role != "" || h.m.system != "" {
+		t.Error("/role show switched the role")
+	}
+
+	h.typeAndSend("/role technical")
+	h.typeAndSend("/role show")
+	tech, _ := roles.Builtin().Find("technical")
+	if out := h.last(entryNotice).text; !strings.HasPrefix(out, "Technical Adviser (technical)") || !strings.HasSuffix(out, tech.Prompt) || strings.Contains(out, "web search") {
+		t.Errorf("show current:\n%s", out)
+	}
+	h.typeAndSend("/role show lawyer")
+	if !strings.Contains(h.last(entryError).text, `No role "lawyer"`) {
+		t.Error("unknown role")
 	}
 }

@@ -76,6 +76,7 @@ type options struct {
 	search, thinking, verbose      bool
 	showVersion, listBackends      bool
 	listModels, listRoles          bool
+	showRole                       string
 }
 
 func run(ctx context.Context, args []string, e env) int {
@@ -118,6 +119,7 @@ Flags:
 	fs.BoolVar(&o.listBackends, "list-backends", false, "print the available backends and exit")
 	fs.BoolVar(&o.listModels, "list-models", false, "print the selected backend's models and exit")
 	fs.BoolVar(&o.listRoles, "list-roles", false, "print the available roles and exit")
+	fs.StringVar(&o.showRole, "show-role", "", "print a role's system prompt and exit, e.g. --show-role technical")
 	fs.StringVar(&o.setKey, "set-key", "", "save a backend's API key in the config file and exit: --set-key gemini reads the key\nfrom stdin or a hidden prompt; -b gemini --set-key KEY takes it directly (backends: "+strings.Join(backend.KeyNames(), ", ")+")")
 	fs.StringVar(&o.removeKey, "remove-key", "", "remove a backend's saved API key from the config file and exit")
 	if err := fs.Parse(args); err != nil {
@@ -160,6 +162,14 @@ Flags:
 	}
 	if o.listRoles {
 		return listRoles(e, lib, cfg.DefaultRole)
+	}
+	if o.showRole != "" {
+		r, ok := lib.Find(o.showRole)
+		if !ok {
+			return fail(e, fmt.Errorf("unknown role %q (available: %s)", o.showRole, strings.Join(lib.Names(), ", ")))
+		}
+		fmt.Fprintln(e.stdout, r.Prompt)
+		return exitOK
 	}
 	if o.role != "" && o.system != "" {
 		fmt.Fprintln(e.stderr, "rocket-chat: give either --role or -s, not both")
