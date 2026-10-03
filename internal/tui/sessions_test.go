@@ -28,7 +28,7 @@ func TestAutosaveAndResume(t *testing.T) {
 		"b": {},
 	}
 	h := newHarnessWith(t, backends, Options{Backend: "a", Store: st})
-	h.typeAndSend("/system be brief")
+	h.typeAndSend("/role custom be brief")
 	h.typeAndSend("first chat question")
 	h.typeAndSend("second message")
 
@@ -50,7 +50,7 @@ func TestAutosaveAndResume(t *testing.T) {
 	// A new chat on another backend becomes a second session.
 	h.typeAndSend("/new")
 	h.typeAndSend("/backend b")
-	h.typeAndSend("/system clear")
+	h.typeAndSend("/role off")
 	h.typeAndSend("other topic")
 	if list, _ := st.List(); len(list) != 2 {
 		t.Fatalf("want 2 sessions, got %d", len(list))

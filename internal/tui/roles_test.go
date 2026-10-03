@@ -26,19 +26,15 @@ func TestRoleCommand(t *testing.T) {
 		}
 	}
 
-	h.typeAndSend("/system")
-	list = h.last(entryNotice).text
-	for _, want := range []string{"No system prompt.", "Available prompts", "general", "Technical Adviser", "Research Assistant"} {
-		if !strings.Contains(list, want) {
-			t.Errorf("/system missing %q:\n%s", want, list)
-		}
+	if !strings.HasPrefix(list, "No role: no system prompt.") || !strings.Contains(list, "/role custom <text>") {
+		t.Errorf("/role without a role:\n%s", list)
 	}
 
 	h.typeAndSend("/role Technical Adviser")
 	tech, _ := roles.Builtin().Find("technical")
-	h.typeAndSend("/system")
-	if list := h.last(entryNotice).text; !strings.Contains(list, "from the role Technical Adviser:\n\n"+tech.Prompt) || !strings.Contains(list, "* technical") {
-		t.Errorf("/system with a role:\n%s", list)
+	h.typeAndSend("/role")
+	if list := h.last(entryNotice).text; !strings.HasPrefix(list, "Role: Technical Adviser (technical)\n\n"+tech.Prompt) || !strings.Contains(list, "* technical") {
+		t.Errorf("/role with a role:\n%s", list)
 	}
 	if h.m.role != "technical" || h.m.system != tech.Prompt {
 		t.Fatalf("role %q system %q", h.m.role, h.m.system)
@@ -67,13 +63,29 @@ func TestRoleCommand(t *testing.T) {
 		t.Error("unknown role accepted")
 	}
 
-	h.typeAndSend("/system be terse")
-	h.typeAndSend("/system")
-	if list := h.last(entryNotice).text; !strings.Contains(list, "(custom):\n\nbe terse") || strings.Contains(list, "*") {
-		t.Errorf("/system with a custom prompt:\n%s", list)
+	h.typeAndSend("/role research")
+	h.typeAndSend("/role custom be terse")
+	h.typeAndSend("/role")
+	if list := h.last(entryNotice).text; !strings.HasPrefix(list, "Role: custom\n\nbe terse") || strings.Contains(list, "*") {
+		t.Errorf("/role with a custom prompt:\n%s", list)
 	}
-	if h.m.role != "" || !strings.Contains(h.view(), "custom system prompt") {
-		t.Errorf("custom prompt should clear the role (role %q)", h.m.role)
+	if h.m.role != "" || h.m.system != "be terse" || !strings.Contains(h.view(), "role: custom") {
+		t.Errorf("custom prompt: role %q system %q", h.m.role, h.m.system)
+	}
+	if h.m.search != nil {
+		t.Error("research's search setting outlived the role")
+	}
+	h.typeAndSend("/role show")
+	if !strings.HasPrefix(h.last(entryNotice).text, "Role: custom") {
+		t.Error("/role show with a custom prompt")
+	}
+	h.typeAndSend("/role custom")
+	if !strings.Contains(h.last(entryError).text, "Usage: /role custom") {
+		t.Error("/role custom without text")
+	}
+	h.typeAndSend("/system be terse")
+	if !strings.Contains(h.last(entryError).text, "/system is now part of /role") {
+		t.Error("/system should point to /role")
 	}
 	h.typeAndSend("/role off")
 	if h.m.system != "" || h.m.role != "" {
@@ -148,7 +160,7 @@ func TestRoleShow(t *testing.T) {
 	research, _ := roles.Builtin().Find("research")
 
 	h.typeAndSend("/role show")
-	if !strings.Contains(h.last(entryError).text, "No role is in use") {
+	if !strings.Contains(h.last(entryNotice).text, "No role: no system prompt.") {
 		t.Error("/role show without a role")
 	}
 	h.typeAndSend("/role show Research Assistant")
@@ -170,5 +182,27 @@ func TestRoleShow(t *testing.T) {
 	h.typeAndSend("/role show lawyer")
 	if !strings.Contains(h.last(entryError).text, `No role "lawyer"`) {
 		t.Error("unknown role")
+	}
+}
+
+func TestRoleCompletion(t *testing.T) {
+	h := newHarness(t, map[string]*fake.Backend{"fake": {}}, "fake")
+	for start, want := range map[string]string{
+		"/ro":           "/role ",
+		"/role cu":      "/role custom ",
+		"/role show te": "/role show technical ",
+	} {
+		h.m.input.SetValue(start)
+		h.m.compl = nil
+		h.send(press("tab"))
+		if got := h.m.input.Value(); got != want {
+			t.Errorf("%q: %q, want %q", start, got, want)
+		}
+	}
+	h.m.input.SetValue("/sys")
+	h.m.compl = nil
+	h.send(press("tab"))
+	if h.m.input.Value() != "/sys" {
+		t.Error("/system is still offered")
 	}
 }

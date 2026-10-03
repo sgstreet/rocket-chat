@@ -93,8 +93,9 @@ func Builtin() *Library {
 }
 
 // Load returns the built-in roles merged with those from the config file.
-// A configured role with a built-in's ID replaces it. configDir resolves
-// relative File paths.
+// A configured role with a built-in's ID replaces it, keeping the
+// built-in's name, description, prompt and search setting for anything it
+// leaves out. configDir resolves relative File paths.
 func Load(configured map[string]Config, configDir string) (*Library, error) {
 	lib := Builtin()
 	ids := make([]string, 0, len(configured))
@@ -103,11 +104,16 @@ func Load(configured map[string]Config, configDir string) (*Library, error) {
 	}
 	slices.Sort(ids)
 	for _, id := range ids {
-		r, err := fromConfig(id, configured[id], configDir)
+		i := slices.IndexFunc(lib.roles, func(b Role) bool { return b.ID == id })
+		var base *Role
+		if i >= 0 {
+			base = &lib.roles[i]
+		}
+		r, err := fromConfig(id, configured[id], configDir, base)
 		if err != nil {
 			return nil, fmt.Errorf("roles.%s: %w", id, err)
 		}
-		if i := slices.IndexFunc(lib.roles, func(b Role) bool { return b.ID == id }); i >= 0 {
+		if i >= 0 {
 			lib.roles[i] = r
 		} else {
 			lib.roles = append(lib.roles, r)
@@ -116,7 +122,9 @@ func Load(configured map[string]Config, configDir string) (*Library, error) {
 	return lib, nil
 }
 
-func fromConfig(id string, c Config, configDir string) (Role, error) {
+// fromConfig builds a role from its config entry. base, when not nil, is
+// the built-in being replaced, which fills in what the entry leaves out.
+func fromConfig(id string, c Config, configDir string, base *Role) (Role, error) {
 	if !validID.MatchString(id) {
 		return Role{}, fmt.Errorf("role IDs use lowercase letters, digits and dashes, not %q", id)
 	}
@@ -137,16 +145,26 @@ func fromConfig(id string, c Config, configDir string) (Role, error) {
 		if prompt == "" {
 			return Role{}, fmt.Errorf("%s is empty", path)
 		}
-	case prompt == "":
+	case prompt == "" && base == nil:
 		return Role{}, fmt.Errorf("a role needs a prompt or a file")
 	}
-	return Role{
+	r := Role{
 		ID:          id,
-		Name:        cmp.Or(strings.TrimSpace(c.Name), id),
+		Name:        strings.TrimSpace(c.Name),
 		Description: strings.TrimSpace(c.Description),
 		Prompt:      prompt,
 		Search:      c.Search,
-	}, nil
+	}
+	if base != nil {
+		r.Name = cmp.Or(r.Name, base.Name)
+		r.Description = cmp.Or(r.Description, base.Description)
+		r.Prompt = cmp.Or(r.Prompt, base.Prompt)
+		if r.Search == nil {
+			r.Search = base.Search
+		}
+	}
+	r.Name = cmp.Or(r.Name, id)
+	return r, nil
 }
 
 func resolve(path, configDir string) (string, error) {
