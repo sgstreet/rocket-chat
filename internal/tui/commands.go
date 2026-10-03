@@ -20,7 +20,7 @@ const helpText = `Commands:
   /system [text|clear]   show the current prompt and list roles, or set or clear a custom one
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
-  /mouse on|off          mouse wheel scrolling (off lets the terminal select text and open links)
+  /mouse on|off          mouse handled here (scroll, select to copy, click links) or by the terminal
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -34,7 +34,8 @@ Keys: enter sends · alt+enter or ctrl+j adds a line · esc stops an answer
       up/down (or ctrl+p/ctrl+n) recall earlier inputs, which can be edited before sending
       tab completes commands and their arguments; press it again to cycle, shift+tab goes back
       pgup/pgdn, shift+up/down and the mouse wheel scroll · ctrl+t shows reasoning
-      with the mouse on, hold shift to select text or click links`
+      drag to select text, which is copied · click a link to open it
+      ctrl+v or the middle button pastes`
 
 // modelsMsg carries the result of listing models for /model.
 type modelsMsg struct {
@@ -296,10 +297,10 @@ func (m *model) setMouse(arg string) {
 	switch arg {
 	case "on":
 		m.mouse = true
-		m.notice("Mouse on: the wheel scrolls. Hold Shift to select text or click links.")
+		m.notice("Mouse on: the wheel scrolls, dragging selects and copies text, clicking a link opens it, and the middle button pastes.")
 	case "off":
 		m.mouse = false
-		m.notice("Mouse off: the terminal can select text and open links; scroll with PgUp/PgDn.")
+		m.notice("Mouse off: the terminal selects text and opens links itself; scroll with PgUp/PgDn.")
 	case "":
 		state := "off"
 		if m.mouse {

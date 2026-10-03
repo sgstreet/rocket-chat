@@ -4,6 +4,7 @@ package tui
 import (
 	"cmp"
 	"context"
+	"fmt"
 	"strings"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/atotto/clipboard"
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
@@ -51,9 +53,11 @@ type Options struct {
 	// History keeps typed inputs between runs; nil keeps them only for
 	// this chat.
 	History History
-	// Mouse turns on mouse wheel scrolling. While it is on, the terminal
-	// needs Shift held to select text or click links.
+	// Mouse captures the mouse: the wheel scrolls, dragging selects and
+	// copies text, clicking a link opens it, and the middle button pastes.
 	Mouse bool
+	// OpenURL opens a clicked link; nil uses the system's browser.
+	OpenURL func(url string) error
 }
 
 // Keys reads and saves backends' API keys.
@@ -127,7 +131,15 @@ type model struct {
 	compl     *completion
 	complHint string
 	// mouse reports whether mouse events are captured.
-	mouse   bool
+	mouse bool
+	// sel is the mouse selection, if any; lines is the rendered transcript
+	// it refers to.
+	sel   *selection
+	lines []string
+	// flash is a short message shown in the help line until the next key
+	// or click, such as "copied 42 characters".
+	flash string
+
 	spinner spinner.Model
 	width   int
 	height  int
@@ -245,6 +257,18 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewport, cmd = m.viewport.Update(msg)
 		return m, cmd
 
+	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
+		return m, m.handleMouse(msg)
+
+	case tea.ClipboardMsg:
+		// The terminal's clipboard, read for Ctrl+V or the middle button.
+		return m.Update(tea.PasteMsg{Content: msg.Content})
+
+	case linkFailedMsg:
+		_ = clipboard.WriteAll(msg.link)
+		m.flash = fmt.Sprintf("could not open the link (%v); copied it instead", msg.err)
+		return m, tea.SetClipboard(msg.link)
+
 	case tea.KeyPressMsg:
 		if m.keyFor != "" {
 			return m, m.handleKeyEntry(msg)
@@ -274,7 +298,10 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if k != "tab" && k != "shift+tab" {
 		m.compl, m.complHint = nil, ""
 	}
+	m.sel, m.flash = nil, ""
 	switch k {
+	case "ctrl+v":
+		return m.paste(), true
 	case "tab":
 		return nil, m.complete(1)
 	case "shift+tab":
@@ -362,7 +389,7 @@ func (m *model) View() tea.View {
 		input = lipgloss.NewStyle().Height(inputHeight).Render(m.keyInput.View())
 	}
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
-		m.viewport.View(),
+		m.viewportView(),
 		m.statusLine(),
 		input,
 		m.helpLine(),
@@ -414,7 +441,9 @@ func (m *model) refresh() {
 		return
 	}
 	atBottom := m.viewport.AtBottom() || m.viewport.TotalLineCount() <= m.viewport.Height()
-	m.viewport.SetContent(m.transcript())
+	content := m.transcript()
+	m.lines = strings.Split(content, "\n")
+	m.viewport.SetContent(content)
 	if atBottom {
 		m.viewport.GotoBottom()
 	}
