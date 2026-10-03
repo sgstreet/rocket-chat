@@ -138,9 +138,10 @@ edit. Saved chats remember their role or custom prompt.
 Which prompt a run starts with:
 
 1. `--role <name>` or `-s "text"`, if given (`--role off` for none).
-2. Otherwise the role you last chose with `/role`, including `/role custom <text>` and `/role off`.
-   It is kept in `~/.local/share/rocket-chat/state.json` and applies to new chats and one-shot
-   answers alike; `--list-roles` marks it with `*`.
+2. In the chat, otherwise the role you last chose with `/role`, including `/role custom <text>` and
+   `/role off`. It is kept in `~/.local/share/rocket-chat/state.json`, and `--list-roles` marks the
+   role a new chat starts with. One-shot answers skip this step, so scripts are not affected by
+   what you pick in a chat.
 3. Otherwise `default_role` from `config.json`: the General Assistant unless you set another role,
    or `"off"` for no system prompt.
 
