@@ -71,3 +71,24 @@ default. It needs an ollama.com account, used in one of two ways:
 - `auto` (default): `direct` when `OLLAMA_API_KEY` is set, otherwise `local`.
 
 `rocket-chat --list-models` lists the models installed on the Ollama server.
+
+### Gemini
+
+```yaml
+backends:
+  gemini:
+    model: gemini-3.8-flash        # default: gemini-flash-latest
+    temperature: 0.7               # optional
+    think: true                    # optional; return the model's reasoning (--thinking shows it)
+    search:
+      enabled: true                # Grounding with Google Search; on by default
+      since: 168h                  # optional; only pages from the last week
+```
+
+Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) to a key from https://aistudio.google.com/apikey.
+`rocket-chat -b gemini --list-models` lists the models your key can use.
+
+Grounded answers list their sources, the searches Gemini ran, and Google's search suggestions, which
+Google's terms require to be shown with grounded results. When stdout is not a terminal, the answer is
+printed once complete with `[n]` citation markers after each supported passage; on a terminal it
+streams as it is generated and the sources follow.

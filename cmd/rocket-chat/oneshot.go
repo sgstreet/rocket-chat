@@ -24,6 +24,9 @@ type oneShot struct {
 	thinking bool
 	// verbose shows usage and timing after the reply.
 	verbose bool
+	// buffer holds the answer back until the end so inline citation
+	// markers can be inserted; used when stdout is not a terminal.
+	buffer bool
 }
 
 func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request) error {
@@ -33,6 +36,7 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 		usage      *backend.Usage
 		outLineEnd = true // out is at the start of a line
 		errLineEnd = true // errOut is at the start of a line
+		buffered   strings.Builder
 	)
 	writeOut := func(s string) {
 		fmt.Fprint(o.out, s)
@@ -46,6 +50,9 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 	}
 	finish := func() {
 		endErrLine()
+		if buffered.Len() > 0 {
+			writeOut(render.Cite(buffered.String(), grounding))
+		}
 		if !outLineEnd {
 			writeOut("\n")
 		}
@@ -59,7 +66,11 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 		switch ev.Kind {
 		case backend.EventTextDelta:
 			endErrLine()
-			if ev.Text != "" {
+			switch {
+			case ev.Text == "":
+			case o.buffer:
+				buffered.WriteString(ev.Text)
+			default:
 				writeOut(ev.Text)
 			}
 		case backend.EventThinkingDelta:

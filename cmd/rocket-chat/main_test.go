@@ -39,6 +39,20 @@ func init() {
 			{Kind: backend.EventDone},
 		}}, nil
 	})
+	backend.Register("test-cited", func(func(any) error) (backend.Backend, error) {
+		return &fake.Backend{
+			Caps: backend.Capabilities{InlineCitations: true},
+			Script: []backend.Event{
+				{Kind: backend.EventTextDelta, Text: "Spain won."},
+				{Kind: backend.EventTextDelta, Text: " It was 2–1."},
+				{Kind: backend.EventGrounding, Grounding: &chat.Grounding{
+					Sources: []chat.Source{{Title: "uefa.com", URL: "https://r/1", Cited: true}, {Title: "wiki", URL: "https://r/2", Cited: true}},
+					Spans:   []chat.Span{{Start: 0, End: 10, SourceIndexes: []int{0, 1}}, {Start: 11, End: 24, SourceIndexes: []int{1}}},
+				}},
+				{Kind: backend.EventDone},
+			},
+		}, nil
+	})
 	backend.Register("test-fail", func(func(any) error) (backend.Backend, error) {
 		return &fake.Backend{
 			Script: []backend.Event{{Kind: backend.EventTextDelta, Text: "partial"}},
@@ -210,6 +224,25 @@ func TestQuietByDefault(t *testing.T) {
 	r := cli(t, t.Context(), nil, "-b", "test-grounded", "q")
 	if r.code != exitOK || r.errOut != "" {
 		t.Errorf("got %+v, want empty stderr", r)
+	}
+}
+
+func TestInlineCitationsWhenPiped(t *testing.T) {
+	// stdout is a buffer, not a terminal: the answer is held back and
+	// printed with citation markers.
+	r := cli(t, t.Context(), nil, "-b", "test-cited", "q")
+	want := "Spain won.[1][2] It was 2–1.[2]\n\nSources:\n  [1] uefa.com\n      https://r/1\n  [2] wiki\n      https://r/2\n"
+	if r.code != exitOK || r.out != want {
+		t.Errorf("stdout = %q, want %q", r.out, want)
+	}
+}
+
+func TestInlineCitationsOnTerminalStream(t *testing.T) {
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
+	var out, errOut bytes.Buffer
+	code := run(t.Context(), []string{"-b", "test-cited", "q"}, env{stdout: &out, stderr: &errOut, stdoutIsTerminal: true})
+	if code != exitOK || !strings.HasPrefix(out.String(), "Spain won. It was 2–1.\n\nSources:") {
+		t.Errorf("stdout = %q, want streamed text without markers", out.String())
 	}
 }
 

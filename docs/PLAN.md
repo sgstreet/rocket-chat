@@ -54,7 +54,10 @@ backends are **Ollama** (local models, optional Ollama web search) and
   - `GroundingSupports[].Segment` offsets are **bytes** within one `Part`; join streamed chunks first,
     verify `text[start:end] == Segment.Text`, fall back to searching for `Segment.Text`.
   - Insert `[n]` markers from the end backwards; list sources under the answer.
-  - Show `WebSearchQueries` under the answer.
+  - Show `WebSearchQueries` under the answer. They arrive only with the final metadata, so Gemini
+    emits no "Searching:" progress events.
+  - One-shot mode can't add markers to text it already streamed: when stdout is not a terminal it
+    holds the answer and prints it with markers; on a terminal it streams and lists sources after.
 - Search Suggestions (`SearchEntryPoint`) must be shown with grounded answers (Gemini API terms):
   render suggestion texts as terminal hyperlinks to Google Search, and `/suggestions` opens the HTML.
 - Grounded text is never rewritten beyond adding citation markers.
