@@ -18,6 +18,7 @@ const helpText = `Commands:
   /role [name|off]       list roles (named system prompts), or switch role
   /system [text|clear]   list prompts, or set or clear a custom system prompt
   /search on|off|default turn web search on or off for this chat
+  /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -75,6 +76,8 @@ func (m *model) command(line string) tea.Cmd {
 		m.setSystem(arg)
 	case "search":
 		m.setSearch(arg)
+	case "key", "keys":
+		return m.keyCommand(arg)
 	case "retry":
 		return m.retry()
 	default:

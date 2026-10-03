@@ -31,8 +31,8 @@ Run `rocket-chat` with no prompt for the interactive chat:
 - Enter sends, Alt+Enter (or Ctrl+J) adds a line, Esc stops an answer, PgUp/PgDn scroll,
   Ctrl+T shows or hides the model's reasoning, Ctrl+C quits.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
-  `/role`, `/system`, `/search on|off|default`, `/thinking`, `/retry`, `/new`, `/sessions`, `/resume`,
-  `/export`, `/copy`, `/quit`.
+  `/role`, `/system`, `/search on|off|default`, `/key`, `/thinking`, `/retry`, `/new`, `/sessions`,
+  `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
   `set -g set-clipboard on`.
@@ -107,11 +107,32 @@ and arm64, plus `checksums.txt`, attached to a GitHub release. Start one either 
 
 `make snapshot` builds the same archives locally without publishing.
 
+## API keys
+
+Gemini needs an API key (create one at https://aistudio.google.com/apikey). Ollama web search can use
+an ollama.com API key (https://ollama.com/settings/keys) instead of `ollama signin`. Save them in the
+config file:
+
+```sh
+rocket-chat --set-key gemini            # prompts for the key; nothing is shown as you type
+rocket-chat --set-key ollama < key.txt  # or pipe it in
+rocket-chat --remove-key gemini
+```
+
+In the chat, `/key` shows where each key comes from, `/key gemini` asks for the key at a hidden
+prompt and saves it, and `/key gemini clear` removes it. Starting a chat with Gemini when no key is
+set asks for one before the chat opens.
+
+Keys are stored as `backends.<name>.api_key` in `config.json`, which rocket-chat keeps readable only by
+you (mode 0600). The environment variables `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and
+`OLLAMA_API_KEY` still work and take precedence over a saved key.
+
 ## Configuration
 
 Settings live in a JSON file: the one named by `--config` or `$ROCKET_CHAT_CONFIG`, otherwise
-`rocket-chat/config.json` under the user config directory (`~/.config` on Linux). Without a file the
-defaults apply. `ROCKET_CHAT_BACKEND` overrides `default_backend`. Unknown settings are errors, so
+`rocket-chat/config.json` under the user config directory (`~/.config` on Linux). If the file does
+not exist, rocket-chat creates it with the default settings (and says so on stderr), ready to edit.
+`ROCKET_CHAT_BACKEND` overrides `default_backend`. Unknown settings are errors, so
 typos are caught, and syntax errors give the line and column.
 
 ```json
@@ -147,6 +168,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | Setting | Default | Meaning |
 |---|---|---|
 | `host` | `$OLLAMA_HOST`, then `http://127.0.0.1:11434` | Ollama server |
+| `api_key` | none | ollama.com API key for web search; `$OLLAMA_API_KEY` takes precedence (see [API keys](#api-keys)) |
 | `model` | none | Model used when `-m` is not given |
 | `temperature` | model default | Sampling temperature |
 | `num_ctx` | model default | Context window in tokens |
@@ -182,9 +204,10 @@ consulted. The model must support tool calling (`ollama show <model>` lists `too
 Search queries go to ollama.com even though the model runs locally, which is why search is off by
 default. It needs an ollama.com account, used in one of two ways:
 
-- `direct`: set `OLLAMA_API_KEY` and requests go straight to `https://ollama.com/api/web_search`.
+- `direct`: save an API key (`rocket-chat --set-key ollama`) or set `OLLAMA_API_KEY`, and requests go
+  straight to `https://ollama.com/api/web_search`.
 - `local`: run `ollama signin`; requests go through the local Ollama server.
-- `auto` (default): `direct` when `OLLAMA_API_KEY` is set, otherwise `local`.
+- `auto` (default): `direct` when an API key is set, otherwise `local`.
 
 `rocket-chat --list-models` lists the models installed on the Ollama server.
 
@@ -194,6 +217,7 @@ default. It needs an ollama.com account, used in one of two ways:
 
 | Setting | Default | Meaning |
 |---|---|---|
+| `api_key` | none | Gemini API key; `$GEMINI_API_KEY` or `$GOOGLE_API_KEY` take precedence (see [API keys](#api-keys)) |
 | `model` | `gemini-flash-latest` | Model used when `-m` is not given |
 | `temperature` | model default | Sampling temperature |
 | `think` | off | `true` returns the model's reasoning (`--thinking` shows it) |
@@ -201,7 +225,8 @@ default. It needs an ollama.com account, used in one of two ways:
 | `search.since` | none | Only use pages from this long ago until now, e.g. `"168h"` |
 | `base_url` | Gemini API | API endpoint, for proxies |
 
-Set `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) to a key from https://aistudio.google.com/apikey.
+Save a key from https://aistudio.google.com/apikey with `rocket-chat --set-key gemini`, or set
+`GEMINI_API_KEY` (or `GOOGLE_API_KEY`).
 `rocket-chat -b gemini --list-models` lists the models your key can use.
 
 Gemini decides for itself when a question needs a search; answers it gives without one have no

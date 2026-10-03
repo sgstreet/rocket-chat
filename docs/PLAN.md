@@ -13,8 +13,9 @@ backends are **Ollama** (local models, optional Ollama web search) and
 | Session storage | One JSON file per session under `~/.local/share/rocket-chat`. |
 | Local Ollama server | Started on demand for local hosts when none answers, stopped on exit; a running server is never stopped. |
 | System prompts | Named roles: built-in General Assistant, Technical Adviser, Research Assistant; more in `config.json` (inline or file). |
-| Config file | JSON only (`config.json`); YAML support was removed. Backend sections are strict too. |
-| Gemini auth | Gemini API key only (`GEMINI_API_KEY`). No Vertex AI in v0.1. |
+| Config file | JSON only (`config.json`), created with the defaults when missing; YAML support was removed. Backend sections are strict too. |
+| API keys | `backends.<name>.api_key` in `config.json` (mode 0600), saved with `--set-key` or `/key` at a hidden prompt; environment variables take precedence. |
+| Gemini auth | Gemini API key only (saved key or `GEMINI_API_KEY`). No Vertex AI in v0.1. |
 | Gemini search | `GoogleSearch` tool through `Models.GenerateContentStream`. On by default. |
 | Ollama search | Ollama web search API, run by our own tool-calling loop. Off by default. |
 | Go version | Go 1.26 (required by the `github.com/ollama/ollama` client module). |

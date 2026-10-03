@@ -8,26 +8,35 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	"github.com/ollama/ollama/api"
+
+	"github.com/sgstreet/rocket-chat/internal/backend"
 )
 
 // Web search modes.
 const (
-	// SearchAuto uses SearchDirect when OLLAMA_API_KEY is set, otherwise
-	// SearchLocal.
+	// SearchAuto uses SearchDirect when an ollama.com API key is set
+	// (OLLAMA_API_KEY or api_key), otherwise SearchLocal.
 	SearchAuto = "auto"
-	// SearchDirect calls the ollama.com web search API with OLLAMA_API_KEY.
+	// SearchDirect calls the ollama.com web search API with the API key.
 	SearchDirect = "direct"
 	// SearchLocal goes through the local Ollama server, which authenticates
 	// with the account from `ollama signin`.
 	SearchLocal = "local"
 )
 
-// EnvAPIKey holds the ollama.com API key for SearchDirect.
+// EnvAPIKey holds the ollama.com API key for SearchDirect. It takes
+// precedence over the api_key setting.
 const EnvAPIKey = "OLLAMA_API_KEY"
+
+// keyInfo describes the ollama.com API key. Only web search uses it.
+var keyInfo = backend.KeyInfo{
+	Description: "ollama.com API key for web search",
+	URL:         "https://ollama.com/settings/keys",
+	Env:         []string{EnvAPIKey},
+}
 
 const defaultWebAPI = "https://ollama.com"
 
@@ -83,7 +92,8 @@ func (s SearchSettings) withDefaults() SearchSettings {
 }
 
 // errSearchAuth is returned when web search has no usable credentials.
-var errSearchAuth = errors.New("ollama web search needs an ollama.com account: set " + EnvAPIKey + " or run `ollama signin`")
+var errSearchAuth = errors.New("ollama web search needs an ollama.com account: save an API key with " +
+	"`rocket-chat --set-key ollama` (or /key ollama in the chat), set " + EnvAPIKey + ", or run `ollama signin`")
 
 // webSearcher runs web_search and web_fetch tool calls.
 type webSearcher interface {
@@ -91,8 +101,9 @@ type webSearcher interface {
 	fetch(ctx context.Context, url string) (*api.WebFetchResponse, error)
 }
 
-func newSearcher(mode, webAPI string, client *api.Client, httpClient *http.Client) (webSearcher, error) {
-	key := os.Getenv(EnvAPIKey)
+// newSearcher picks the search route. savedKey is the api_key setting.
+func newSearcher(mode, webAPI, savedKey string, client *api.Client, httpClient *http.Client) (webSearcher, error) {
+	key, _ := keyInfo.Resolve(savedKey)
 	switch mode {
 	case SearchAuto:
 		if key != "" {
@@ -101,7 +112,7 @@ func newSearcher(mode, webAPI string, client *api.Client, httpClient *http.Clien
 		return localSearcher{client: client}, nil
 	case SearchDirect:
 		if key == "" {
-			return nil, fmt.Errorf("search mode %q needs %s", SearchDirect, EnvAPIKey)
+			return nil, fmt.Errorf("search mode %q needs an ollama.com API key: save one with `rocket-chat --set-key ollama` or set %s", SearchDirect, EnvAPIKey)
 		}
 		return directSearcher{base: webAPI, apiKey: key, http: httpClient}, nil
 	case SearchLocal:

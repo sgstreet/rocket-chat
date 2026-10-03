@@ -13,6 +13,8 @@ import (
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/backend/fake"
+	"github.com/sgstreet/rocket-chat/internal/backend/gemini"
+	"github.com/sgstreet/rocket-chat/internal/backend/ollama"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 	"github.com/sgstreet/rocket-chat/internal/config"
 	"github.com/sgstreet/rocket-chat/internal/roles"
@@ -73,7 +75,11 @@ type result struct {
 // not a pipe or file.
 func cli(t *testing.T, ctx context.Context, stdin *string, args ...string) result {
 	t.Helper()
-	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.json"))
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := os.WriteFile(path, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv(config.EnvConfigPath, path)
 	t.Setenv(config.EnvBackend, "")
 	var out, errOut bytes.Buffer
 	e := env{stdout: &out, stderr: &errOut}
@@ -453,10 +459,51 @@ func TestRolesFromConfig(t *testing.T) {
 	}
 }
 
-func TestMissingConfigFlagIsAnError(t *testing.T) {
-	r := cli(t, t.Context(), nil, "--config", filepath.Join(t.TempDir(), "missing.json"), "-b", "fake", "q")
-	if r.code != exitError || !strings.Contains(r.errOut, "missing.json") {
+func TestMissingConfigIsCreated(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "dir", "config.json")
+	r := cli(t, t.Context(), nil, "--config", path, "-b", "fake", "q")
+	if r.code != exitOK || !strings.Contains(r.errOut, "created the config file "+path) {
 		t.Errorf("got %+v", r)
+	}
+	data, err := os.ReadFile(path)
+	if err != nil || string(data) != config.DefaultFile {
+		t.Fatalf("config file %q, %v", data, err)
+	}
+	if r := cli(t, t.Context(), nil, "--config", path, "-b", "fake", "q"); r.code != exitOK || r.errOut != "" {
+		t.Errorf("second run: %+v", r)
+	}
+
+	// The default location is used when no path is given.
+	envPath := filepath.Join(t.TempDir(), "env.json")
+	t.Setenv(config.EnvConfigPath, envPath)
+	var out, errOut bytes.Buffer
+	if code := run(t.Context(), []string{"-b", "fake", "q"}, env{stdout: &out, stderr: &errOut}); code != exitOK {
+		t.Fatalf("exit %d: %s", code, errOut.String())
+	}
+	if _, err := os.Stat(envPath); err != nil {
+		t.Errorf("default config not created: %v", err)
+	}
+}
+
+func TestDefaultConfigFitsBackends(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.json")
+	if err := config.Create(path); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var o ollama.Settings
+	if err := cfg.Decoder("ollama")(&o); err != nil || o.Search.Enabled || o.Serve.AutoStart == nil || !*o.Serve.AutoStart {
+		t.Errorf("ollama section: %+v, %v", o, err)
+	}
+	var g gemini.Settings
+	if err := cfg.Decoder("gemini")(&g); err != nil || g.Search.Enabled == nil || !*g.Search.Enabled {
+		t.Errorf("gemini section: %+v, %v", g, err)
+	}
+	if _, err := cfg.UI.ThemeName(); err != nil {
+		t.Error(err)
 	}
 }
 

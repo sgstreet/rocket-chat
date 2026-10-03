@@ -283,19 +283,25 @@ func TestSearchContract(t *testing.T) {
 
 func TestNewSearcher(t *testing.T) {
 	t.Setenv(EnvAPIKey, "")
-	if s, err := newSearcher(SearchAuto, "", nil, nil); err != nil {
+	if s, err := newSearcher(SearchAuto, "", "", nil, nil); err != nil {
 		t.Fatal(err)
 	} else if _, ok := s.(localSearcher); !ok {
 		t.Errorf("auto without key = %T, want localSearcher", s)
 	}
-	if _, err := newSearcher(SearchDirect, "", nil, nil); err == nil {
+	if _, err := newSearcher(SearchDirect, "", "", nil, nil); err == nil {
 		t.Error("direct without key: want error")
 	}
-	if _, err := newSearcher("bogus", "", nil, nil); err == nil {
+	if s, _ := newSearcher(SearchAuto, "", "saved", nil, nil); s == nil || s.(directSearcher).apiKey != "saved" {
+		t.Errorf("auto with a saved key = %#v, want directSearcher with it", s)
+	}
+	if _, err := newSearcher("bogus", "", "", nil, nil); err == nil {
 		t.Error("unknown mode: want error")
 	}
 	t.Setenv(EnvAPIKey, "k")
-	if s, _ := newSearcher(SearchAuto, "", nil, nil); s == nil {
+	if s, _ := newSearcher(SearchAuto, "", "saved", nil, nil); s == nil || s.(directSearcher).apiKey != "k" {
+		t.Errorf("%s should take precedence over the saved key: %#v", EnvAPIKey, s)
+	}
+	if s, _ := newSearcher(SearchAuto, "", "", nil, nil); s == nil {
 		t.Fatal("nil searcher")
 	} else if _, ok := s.(directSearcher); !ok {
 		t.Errorf("auto with key = %T, want directSearcher", s)
