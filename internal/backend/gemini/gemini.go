@@ -116,7 +116,7 @@ func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {
 	var models []backend.ModelInfo
 	for m, err := range b.client.Models.All(ctx) {
 		if err != nil {
-			return nil, explain(ctx, err, "")
+			return nil, explain(ctx, err, "", false)
 		}
 		if !slices.Contains(m.SupportedActions, "generateContent") {
 			continue
@@ -143,9 +143,11 @@ func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backe
 			metadata *genai.GroundingMetadata
 			usage    backend.Usage
 		)
-		for resp, err := range b.client.Models.GenerateContentStream(ctx, model, contents(req.Messages), b.config(req)) {
+		cfg := b.config(req)
+		searching := len(cfg.Tools) > 0
+		for resp, err := range b.client.Models.GenerateContentStream(ctx, model, contents(req.Messages), cfg) {
 			if err != nil {
-				yield(backend.Event{}, explain(ctx, err, model))
+				yield(backend.Event{}, explain(ctx, err, model, searching))
 				return
 			}
 			if u := resp.UsageMetadata; u != nil {
@@ -233,7 +235,7 @@ func (b *Backend) config(req backend.Request) *genai.GenerateContentConfig {
 }
 
 // explain turns API errors into messages that say what to do next.
-func explain(ctx context.Context, err error, model string) error {
+func explain(ctx context.Context, err error, model string, searching bool) error {
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
@@ -250,6 +252,9 @@ func explain(ctx context.Context, err error, model string) error {
 		return fmt.Errorf("gemini model %q not found; see --list-models (%s)", model, msg)
 	case strings.Contains(lower, "api key"), apiErr.Code == http.StatusUnauthorized, apiErr.Code == http.StatusForbidden:
 		return fmt.Errorf("gemini rejected the API key; check GEMINI_API_KEY (%s)", msg)
+	case apiErr.Code == http.StatusTooManyRequests && searching:
+		return fmt.Errorf("gemini quota reached for a request grounded with Google Search; the key's plan may not "+
+			"include grounding (check billing at https://aistudio.google.com), or try --search=false (%s)", msg)
 	case apiErr.Code == http.StatusTooManyRequests:
 		return fmt.Errorf("gemini quota or rate limit reached; try again later (%s)", msg)
 	}

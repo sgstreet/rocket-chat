@@ -271,21 +271,26 @@ func TestSearchToggle(t *testing.T) {
 }
 
 func TestErrors(t *testing.T) {
+	off := false
 	tests := []struct {
 		status  int
 		message string
+		search  *bool
 		want    string
 	}{
-		{400, "API key not valid. Please pass a valid API key.", "check GEMINI_API_KEY"},
-		{404, "models/nope is not found", `gemini model "nope" not found; see --list-models`},
-		{429, "Resource has been exhausted", "quota or rate limit"},
+		{400, "API key not valid. Please pass a valid API key.", nil, "check GEMINI_API_KEY"},
+		{404, "models/nope is not found", nil, `gemini model "nope" not found; see --list-models`},
+		{429, "Resource has been exhausted", nil, "may not include grounding"},
+		{429, "Resource has been exhausted", &off, "quota or rate limit reached; try again later"},
 	}
 	for _, tt := range tests {
 		f := newFakeAPI(t)
 		f.status, f.message = tt.status, tt.message
 		b := newBackend(t, f, Settings{Model: "nope"})
+		req := question
+		req.Search = tt.search
 		var gotErr error
-		for _, err := range b.Chat(t.Context(), question) {
+		for _, err := range b.Chat(t.Context(), req) {
 			if err != nil {
 				gotErr = err
 				break

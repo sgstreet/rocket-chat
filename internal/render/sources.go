@@ -15,6 +15,14 @@ import (
 // match the [n] markers used in answers. It returns "" when there is nothing
 // to show.
 func Sources(g *chat.Grounding) string {
+	return SourcesLinked(g, nil)
+}
+
+// SourcesLinked is Sources with link formatting it to show each title
+// as a link instead of printing the URL. Terminals with OSC 8 support use
+// it for clickable titles, since grounding URLs are often longer than the
+// window is wide.
+func SourcesLinked(g *chat.Grounding, link func(text, url string) string) string {
 	if g == nil {
 		return ""
 	}
@@ -24,9 +32,9 @@ func Sources(g *chat.Grounding) string {
 	for _, s := range g.Sources {
 		anyCited = anyCited || s.Cited
 	}
-	writeSources(&b, "Sources", g.Sources, func(s chat.Source) bool { return !anyCited || s.Cited })
+	writeSources(&b, "Sources", g.Sources, link, func(s chat.Source) bool { return !anyCited || s.Cited })
 	if anyCited {
-		writeSources(&b, "Also consulted", g.Sources, func(s chat.Source) bool { return !s.Cited })
+		writeSources(&b, "Also consulted", g.Sources, link, func(s chat.Source) bool { return !s.Cited })
 	}
 
 	if len(g.Queries) > 0 {
@@ -44,13 +52,17 @@ func Sources(g *chat.Grounding) string {
 			if u == "" {
 				u = GoogleSearchURL(l.Text)
 			}
-			fmt.Fprintf(&b, "  %s  <%s>\n", l.Text, u)
+			if link != nil {
+				fmt.Fprintf(&b, "  %s\n", link(l.Text, u))
+			} else {
+				fmt.Fprintf(&b, "  %s  <%s>\n", l.Text, u)
+			}
 		}
 	}
 	return b.String()
 }
 
-func writeSources(b *strings.Builder, heading string, sources []chat.Source, include func(chat.Source) bool) {
+func writeSources(b *strings.Builder, heading string, sources []chat.Source, link func(text, url string) string, include func(chat.Source) bool) {
 	wrote := false
 	for i, s := range sources {
 		if !include(s) {
@@ -63,6 +75,10 @@ func writeSources(b *strings.Builder, heading string, sources []chat.Source, inc
 		title := s.Title
 		if title == "" {
 			title = s.URL
+		}
+		if link != nil && s.URL != "" {
+			fmt.Fprintf(b, "  [%d] %s\n", i+1, link(title, s.URL))
+			continue
 		}
 		fmt.Fprintf(b, "  [%d] %s\n", i+1, title)
 		if s.URL != "" && s.URL != title {

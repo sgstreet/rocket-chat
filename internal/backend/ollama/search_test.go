@@ -1,6 +1,7 @@
 package ollama
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -317,6 +318,43 @@ func TestGroundingCitations(t *testing.T) {
 	if newSearchTurn(SearchSettings{}, nil).grounding("[1]") != nil {
 		t.Error("grounding with no sources or queries should be nil")
 	}
+}
+
+func TestSearchResultsAreTruncated(t *testing.T) {
+	long := strings.Repeat("word ", 1000) // 5000 bytes
+	turn := newSearchTurn(SearchSettings{}.withDefaults(), fakeSearcher{results: []api.WebSearchResult{
+		{Title: "Long page", URL: "https://long.example", Content: long},
+		{Title: "Short", URL: "https://short.example", Content: "short text"},
+	}})
+	text, err := turn.call(t.Context(), toolWebSearch, args("query", "q"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(text, long) || !strings.Contains(text, "[truncated; use web_fetch for the full page]") {
+		t.Error("long result not truncated")
+	}
+	if !strings.Contains(text, "[2] Short\nURL: https://short.example\nshort text\n") {
+		t.Errorf("short result changed:\n%s", text)
+	}
+	if n := len(turn.sources[0].Snippet); n > 2000+len(" [truncated; use web_fetch for the full page]") {
+		t.Errorf("stored snippet is %d bytes", n)
+	}
+}
+
+type fakeSearcher struct{ results []api.WebSearchResult }
+
+func (f fakeSearcher) search(context.Context, string, int) ([]api.WebSearchResult, error) {
+	return f.results, nil
+}
+
+func (f fakeSearcher) fetch(context.Context, string) (*api.WebFetchResponse, error) {
+	return &api.WebFetchResponse{}, nil
+}
+
+func args(key, value string) api.ToolCallFunctionArguments {
+	a := api.NewToolCallFunctionArguments()
+	a.Set(key, value)
+	return a
 }
 
 func TestTruncateUTF8(t *testing.T) {

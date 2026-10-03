@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"io"
@@ -100,7 +101,7 @@ func (o oneShot) run(ctx context.Context, b backend.Backend, req backend.Request
 		writeOut("\n" + s)
 	}
 	if o.verbose {
-		fmt.Fprintln(o.errOut, stats(o.backendName, req.Model, usage, time.Since(start)))
+		fmt.Fprintln(o.errOut, stats(o.backendName, cmp.Or(req.Model, b.Capabilities().DefaultModel), usage, time.Since(start)))
 	}
 	return nil
 }
