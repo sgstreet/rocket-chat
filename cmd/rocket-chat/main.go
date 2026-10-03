@@ -12,6 +12,7 @@ import (
 	"runtime/debug"
 	"strings"
 	"syscall"
+	"text/tabwriter"
 
 	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
@@ -19,6 +20,7 @@ import (
 
 	// Backends register themselves in init.
 	_ "github.com/sgstreet/rocket-chat/internal/backend/fake"
+	_ "github.com/sgstreet/rocket-chat/internal/backend/ollama"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
@@ -58,6 +60,7 @@ type options struct {
 	configPath                     string
 	search, thinking, verbose      bool
 	showVersion, listBackends      bool
+	listModels                     bool
 }
 
 func run(ctx context.Context, args []string, e env) int {
@@ -93,6 +96,7 @@ Flags:
 	fs.StringVar(&o.configPath, "config", "", "config file (default $"+config.EnvConfigPath+" or the user config directory)")
 	fs.BoolVar(&o.showVersion, "version", false, "print the version and exit")
 	fs.BoolVar(&o.listBackends, "list-backends", false, "print the available backends and exit")
+	fs.BoolVar(&o.listModels, "list-models", false, "print the selected backend's models and exit")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return exitOK
@@ -118,12 +122,6 @@ Flags:
 		return fail(e, err)
 	}
 
-	text, err := buildPrompt(o.prompt, fs.Args(), e)
-	if err != nil {
-		fmt.Fprintln(e.stderr, "rocket-chat:", err)
-		return exitUsage
-	}
-
 	name := o.backend
 	if name == "" {
 		name = cfg.DefaultBackend
@@ -131,6 +129,15 @@ Flags:
 	b, err := backend.Open(name, cfg.Decoder(name))
 	if err != nil {
 		return fail(e, err)
+	}
+	if o.listModels {
+		return listModels(ctx, b, e)
+	}
+
+	text, err := buildPrompt(o.prompt, fs.Args(), e)
+	if err != nil {
+		fmt.Fprintln(e.stderr, "rocket-chat:", err)
+		return exitUsage
 	}
 
 	req := backend.Request{
@@ -155,6 +162,21 @@ Flags:
 			fmt.Fprintln(e.stderr, "rocket-chat: interrupted")
 			return exitInterrupted
 		}
+		return fail(e, err)
+	}
+	return exitOK
+}
+
+func listModels(ctx context.Context, b backend.Backend, e env) int {
+	models, err := b.Models(ctx)
+	if err != nil {
+		return fail(e, err)
+	}
+	w := tabwriter.NewWriter(e.stdout, 0, 0, 2, ' ', 0)
+	for _, m := range models {
+		fmt.Fprintf(w, "%s\t%s\n", m.Name, m.Description)
+	}
+	if err := w.Flush(); err != nil {
 		return fail(e, err)
 	}
 	return exitOK

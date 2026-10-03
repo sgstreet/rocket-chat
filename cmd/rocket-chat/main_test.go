@@ -82,6 +82,18 @@ func TestListBackends(t *testing.T) {
 	}
 }
 
+func TestListModels(t *testing.T) {
+	recorder = &fake.Backend{ModelList: []backend.ModelInfo{
+		{Name: "qwen3:4b", Description: "qwen3 4.0B Q4_K_M"},
+		{Name: "llama3.2", Description: "llama 3.2B"},
+	}}
+	r := cli(t, t.Context(), nil, "-b", "test-record", "--list-models")
+	want := "qwen3:4b  qwen3 4.0B Q4_K_M\nllama3.2  llama 3.2B\n"
+	if r.code != exitOK || r.out != want {
+		t.Errorf("got %+v, want stdout %q", r, want)
+	}
+}
+
 func TestBadFlag(t *testing.T) {
 	if r := cli(t, t.Context(), nil, "--nope"); r.code != exitUsage {
 		t.Errorf("exit %d, want %d", r.code, exitUsage)
