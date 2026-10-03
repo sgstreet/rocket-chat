@@ -64,6 +64,17 @@ type UI struct {
 	// Markdown renders finished replies as Markdown (default on); off
 	// shows the model's text as it is.
 	Markdown *bool `json:"markdown"`
+	// InputLines is how many lines the input box shows, 1 to 20 (default
+	// 3).
+	InputLines int `json:"input_lines"`
+}
+
+// InputLinesValue checks ui.input_lines, returning 0 when it is unset.
+func (u UI) InputLinesValue() (int, error) {
+	if u.InputLines < 0 || u.InputLines > 20 {
+		return 0, fmt.Errorf("ui.input_lines must be from 1 to 20, not %d", u.InputLines)
+	}
+	return u.InputLines, nil
 }
 
 // MarkdownEnabled reports whether replies are rendered as Markdown.

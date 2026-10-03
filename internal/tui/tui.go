@@ -61,6 +61,9 @@ type Options struct {
 	// PlainReplies shows replies as the model wrote them instead of
 	// rendering them as Markdown.
 	PlainReplies bool
+	// InputLines is the input box height in lines, 1 to MaxInputLines;
+	// 0 means DefaultInputLines.
+	InputLines int
 	// RememberRole saves a role chosen with /role for the next run: id for
 	// a named role, otherwise a custom prompt, or neither for none. Nil
 	// remembers nothing.
@@ -92,7 +95,12 @@ func Run(ctx context.Context, opts Options, programOpts ...tea.ProgramOption) er
 	return err
 }
 
-const inputHeight = 3
+// Input box heights: the default, and the range /lines and ui.input_lines
+// accept.
+const (
+	DefaultInputLines = 3
+	MaxInputLines     = 20
+)
 
 type model struct {
 	ctx  context.Context
@@ -145,6 +153,9 @@ type model struct {
 	mouse bool
 	// markdown reports whether finished replies are rendered as Markdown.
 	markdown bool
+	// inputLines is the input box height chosen with ui.input_lines or
+	// /lines; the screen may show fewer when it is short.
+	inputLines int
 	// sel is the mouse selection, if any; lines is the rendered transcript
 	// it refers to.
 	sel   *selection
@@ -180,7 +191,11 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 	in.Placeholder = "Ask anything. Enter sends, Alt+Enter adds a line, /help lists commands."
 	in.ShowLineNumbers = false
 	in.Prompt = "│ "
-	in.SetHeight(inputHeight)
+	inputLines := opts.InputLines
+	if inputLines < 1 || inputLines > MaxInputLines {
+		inputLines = DefaultInputLines
+	}
+	in.SetHeight(inputLines)
 	in.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j"))
 	in.Focus()
 
@@ -197,6 +212,7 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		hist:        newInputHistory(opts.History),
 		mouse:       opts.Mouse,
 		markdown:    !opts.PlainReplies,
+		inputLines:  inputLines,
 		ctx:         ctx,
 		opts:        opts,
 		backendName: opts.Backend,
@@ -411,10 +427,11 @@ func (m *model) View() tea.View {
 	}
 	input := m.input.View()
 	if m.keyFor != "" {
-		input = lipgloss.NewStyle().Height(inputHeight).Render(m.keyInput.View())
+		input = lipgloss.NewStyle().Height(m.inputHeight()).Render(m.keyInput.View())
 	}
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
 		m.viewportView(),
+		m.separator(),
 		m.statusLine(),
 		input,
 		m.helpLine(),
@@ -447,6 +464,19 @@ func (m *model) onLastRow() bool {
 	return m.input.Line() == m.input.LineCount()-1 && li.RowOffset >= li.Height-1
 }
 
+// composerChrome is the composer's rows besides the input box: the
+// separator, the status bar and the hint line.
+const composerChrome = 3
+
+// inputHeight is the input box's height: the chosen number of lines, fewer
+// if the window is too short to keep a line of conversation.
+func (m *model) inputHeight() int {
+	if m.height == 0 {
+		return m.inputLines
+	}
+	return max(1, min(m.inputLines, m.height-composerChrome-1))
+}
+
 // layout sizes the components to the window.
 func (m *model) layout() {
 	if m.width == 0 {
@@ -455,7 +485,8 @@ func (m *model) layout() {
 	m.input.SetWidth(m.width)
 	m.keyInput.SetWidth(max(1, m.width-lipgloss.Width(m.keyInput.Prompt)-1))
 	m.viewport.SetWidth(m.width)
-	m.viewport.SetHeight(max(1, m.height-inputHeight-2))
+	m.input.SetHeight(m.inputHeight())
+	m.viewport.SetHeight(max(1, m.height-m.inputHeight()-composerChrome))
 	m.refresh()
 }
 

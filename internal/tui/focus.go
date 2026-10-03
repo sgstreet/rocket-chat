@@ -67,8 +67,8 @@ func (m *model) transcriptKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 }
 
 // inputTop is the screen row where the input box starts: below the
-// transcript and the status line.
-func (m *model) inputTop() int { return m.viewport.Height() + 1 }
+// transcript, the separator and the status bar.
+func (m *model) inputTop() int { return m.viewport.Height() + 2 }
 
 // placeCursor moves the input cursor to the clicked screen position: row
 // is relative to the top of the input box, x is the screen column.

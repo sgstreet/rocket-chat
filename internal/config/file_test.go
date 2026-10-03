@@ -24,7 +24,7 @@ func TestCreate(t *testing.T) {
 		t.Fatalf("default file does not load: %v", err)
 	}
 	if cfg.DefaultBackend != "ollama" || !cfg.Sessions.SaveEnabled() || cfg.APIKey("gemini") != "" ||
-		!cfg.UI.MouseEnabled() || !cfg.UI.HistoryEnabled() || !cfg.UI.MarkdownEnabled() {
+		!cfg.UI.MouseEnabled() || !cfg.UI.HistoryEnabled() || !cfg.UI.MarkdownEnabled() || cfg.UI.InputLines != 3 {
 		t.Errorf("default config = %+v", cfg)
 	}
 	if err := Create(path); err == nil {

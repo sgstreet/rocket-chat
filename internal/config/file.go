@@ -39,7 +39,8 @@ const DefaultFile = `{
     "theme": "auto",
     "mouse": true,
     "history": true,
-    "markdown": true
+    "markdown": true,
+    "input_lines": 3
   },
   "roles": {}
 }
