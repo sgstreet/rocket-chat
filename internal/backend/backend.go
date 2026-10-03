@@ -45,8 +45,9 @@ type Request struct {
 	Model    string
 	System   string
 	Messages []chat.Message
-	// Search enables web search for backends that support it.
-	Search bool
+	// Search enables or disables web search for backends that support it.
+	// When nil, the backend's configured default applies.
+	Search *bool
 	// Temperature overrides the model's default when non-nil.
 	Temperature *float64
 	// Think enables or disables reasoning output when non-nil.

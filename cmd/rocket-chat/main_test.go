@@ -2,33 +2,233 @@ package main
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/sgstreet/rocket-chat/internal/backend"
+	"github.com/sgstreet/rocket-chat/internal/backend/fake"
+	"github.com/sgstreet/rocket-chat/internal/chat"
+	"github.com/sgstreet/rocket-chat/internal/config"
 )
 
-func TestVersion(t *testing.T) {
+// recorder is the backend behind "test-record"; tests reset it before use.
+var recorder *fake.Backend
+
+func init() {
+	backend.Register("test-record", func(func(any) error) (backend.Backend, error) {
+		return recorder, nil
+	})
+	backend.Register("test-grounded", func(func(any) error) (backend.Backend, error) {
+		return &fake.Backend{Script: []backend.Event{
+			{Kind: backend.EventThinkingDelta, Text: "let me look"},
+			{Kind: backend.EventSearchStarted, Query: "euro 2024 winner"},
+			{Kind: backend.EventFetchStarted, URL: "https://uefa.example/final"},
+			{Kind: backend.EventTextDelta, Text: "Spain won"},
+			{Kind: backend.EventTextDelta, Text: " Euro 2024 [1]."},
+			{Kind: backend.EventGrounding, Grounding: &chat.Grounding{
+				Sources: []chat.Source{{Title: "Final report", URL: "https://uefa.example/final", Cited: true}},
+				Queries: []string{"euro 2024 winner"},
+			}},
+			{Kind: backend.EventUsage, Usage: &backend.Usage{InputTokens: 7, OutputTokens: 5, SearchQueries: 1}},
+			{Kind: backend.EventDone},
+		}}, nil
+	})
+	backend.Register("test-fail", func(func(any) error) (backend.Backend, error) {
+		return &fake.Backend{
+			Script: []backend.Event{{Kind: backend.EventTextDelta, Text: "partial"}},
+			Err:    errors.New("model exploded"),
+		}, nil
+	})
+}
+
+type result struct {
+	code        int
+	out, errOut string
+}
+
+// cli runs the command with an isolated config. A nil stdin means stdin is a
+// terminal.
+func cli(t *testing.T, ctx context.Context, stdin *string, args ...string) result {
+	t.Helper()
+	t.Setenv(config.EnvConfigPath, filepath.Join(t.TempDir(), "absent.yaml"))
+	t.Setenv(config.EnvBackend, "")
 	var out, errOut bytes.Buffer
-	if code := run([]string{"--version"}, &out, &errOut); code != 0 {
-		t.Fatalf("exit %d, stderr %q", code, errOut.String())
+	e := env{stdout: &out, stderr: &errOut, stdinIsTerminal: true}
+	if stdin != nil {
+		e.stdin = strings.NewReader(*stdin)
+		e.stdinIsTerminal = false
 	}
-	if !strings.HasPrefix(out.String(), "rocket-chat ") {
-		t.Errorf("output = %q", out.String())
+	code := run(ctx, args, e)
+	return result{code: code, out: out.String(), errOut: errOut.String()}
+}
+
+func ptr[T any](v T) *T { return &v }
+
+func TestVersion(t *testing.T) {
+	r := cli(t, t.Context(), nil, "--version")
+	if r.code != exitOK || !strings.HasPrefix(r.out, "rocket-chat ") {
+		t.Errorf("got %+v", r)
 	}
 }
 
 func TestListBackends(t *testing.T) {
-	var out, errOut bytes.Buffer
-	if code := run([]string{"--list-backends"}, &out, &errOut); code != 0 {
-		t.Fatalf("exit %d, stderr %q", code, errOut.String())
-	}
-	if !strings.Contains(out.String(), "fake\n") {
-		t.Errorf("output = %q, want fake listed", out.String())
+	r := cli(t, t.Context(), nil, "--list-backends")
+	if r.code != exitOK || !strings.Contains(r.out, "fake\n") {
+		t.Errorf("got %+v", r)
 	}
 }
 
 func TestBadFlag(t *testing.T) {
-	var out, errOut bytes.Buffer
-	if code := run([]string{"--nope"}, &out, &errOut); code != 2 {
-		t.Errorf("exit %d, want 2", code)
+	if r := cli(t, t.Context(), nil, "--nope"); r.code != exitUsage {
+		t.Errorf("exit %d, want %d", r.code, exitUsage)
+	}
+}
+
+func TestHelp(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-h")
+	if r.code != exitOK || !strings.Contains(r.errOut, "Usage:") {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestEchoFromArgs(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "fake", "hello", "there")
+	if r.code != exitOK || r.out != "hello there\n" {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestPromptFlagWithStdin(t *testing.T) {
+	recorder = &fake.Backend{}
+	r := cli(t, t.Context(), ptr("line one\nline two\n"), "--backend", "test-record", "-p", "summarize", "-m", "m1", "-s", "be brief")
+	if r.code != exitOK {
+		t.Fatalf("got %+v", r)
+	}
+	reqs := recorder.Requests()
+	if len(reqs) != 1 {
+		t.Fatalf("%d requests", len(reqs))
+	}
+	req := reqs[0]
+	if got, want := req.Messages[0].Text, "summarize\n\nline one\nline two"; got != want {
+		t.Errorf("prompt = %q, want %q", got, want)
+	}
+	if req.Model != "m1" || req.System != "be brief" {
+		t.Errorf("model %q system %q", req.Model, req.System)
+	}
+	if req.Search != nil {
+		t.Errorf("Search = %v, want nil when --search not given", *req.Search)
+	}
+}
+
+func TestStdinOnly(t *testing.T) {
+	r := cli(t, t.Context(), ptr("piped question\n"), "-b", "fake")
+	if r.code != exitOK || r.out != "piped question\n" {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestSearchFlag(t *testing.T) {
+	for _, tt := range []struct {
+		arg  string
+		want bool
+	}{{"--search", true}, {"--search=false", false}} {
+		recorder = &fake.Backend{}
+		if r := cli(t, t.Context(), nil, "-b", "test-record", tt.arg, "q"); r.code != exitOK {
+			t.Fatalf("%s: got %+v", tt.arg, r)
+		}
+		s := recorder.Requests()[0].Search
+		if s == nil || *s != tt.want {
+			t.Errorf("%s: Search = %v, want %v", tt.arg, s, tt.want)
+		}
+	}
+}
+
+func TestPromptErrors(t *testing.T) {
+	for _, tt := range []struct {
+		name  string
+		stdin *string
+		args  []string
+	}{
+		{"no prompt", nil, []string{"-b", "fake"}},
+		{"empty stdin", ptr("  \n"), []string{"-b", "fake"}},
+		{"both -p and args", nil, []string{"-b", "fake", "-p", "x", "y"}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			if r := cli(t, t.Context(), tt.stdin, tt.args...); r.code != exitUsage {
+				t.Errorf("got %+v, want exit %d", r, exitUsage)
+			}
+		})
+	}
+}
+
+func TestGroundedOutput(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "test-grounded", "-v", "--thinking", "who won euro 2024")
+	if r.code != exitOK {
+		t.Fatalf("got %+v", r)
+	}
+	wantOut := `Spain won Euro 2024 [1].
+
+Sources:
+  [1] Final report
+      https://uefa.example/final
+Searched: "euro 2024 winner"
+`
+	if r.out != wantOut {
+		t.Errorf("stdout =\n%s\nwant\n%s", r.out, wantOut)
+	}
+	for _, want := range []string{
+		"let me look\nSearching: euro 2024 winner\n",
+		"Reading: https://uefa.example/final\n",
+		"[test-grounded · 7 in / 5 out tokens · 1 searches · ",
+	} {
+		if !strings.Contains(r.errOut, want) {
+			t.Errorf("stderr %q missing %q", r.errOut, want)
+		}
+	}
+}
+
+func TestQuietByDefault(t *testing.T) {
+	// stderr is not a terminal and -v is not given: no progress or reasoning.
+	r := cli(t, t.Context(), nil, "-b", "test-grounded", "q")
+	if r.code != exitOK || r.errOut != "" {
+		t.Errorf("got %+v, want empty stderr", r)
+	}
+}
+
+func TestBackendError(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "test-fail", "q")
+	if r.code != exitError || r.out != "partial\n" || !strings.Contains(r.errOut, "model exploded") {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestUnknownBackend(t *testing.T) {
+	r := cli(t, t.Context(), nil, "-b", "nope", "q")
+	if r.code != exitError || !strings.Contains(r.errOut, `unknown backend "nope"`) {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestInterrupted(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	r := cli(t, ctx, nil, "-b", "fake", "q")
+	if r.code != exitInterrupted || !strings.Contains(r.errOut, "interrupted") {
+		t.Errorf("got %+v", r)
+	}
+}
+
+func TestDefaultBackendFromConfig(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("default_backend: fake\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := cli(t, t.Context(), nil, "--config", path, "from", "config")
+	if r.code != exitOK || r.out != "from config\n" {
+		t.Errorf("got %+v", r)
 	}
 }
