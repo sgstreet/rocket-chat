@@ -85,12 +85,6 @@ func TestClickOnLinkKeepsFocus(t *testing.T) {
 	if len(opened) != 1 || h.m.focus != focusInput {
 		t.Errorf("opened %q, focus %v", opened, h.m.focus)
 	}
-	// A drag focuses the conversation.
-	h.m.Update(tea.MouseClickMsg{X: 0, Y: r, Button: tea.MouseLeft})
-	h.m.Update(tea.MouseMotionMsg{X: 6, Y: r, Button: tea.MouseLeft})
-	if h.m.focus != focusTranscript {
-		t.Error("drag did not focus the conversation")
-	}
 }
 
 func TestClickPlacesInputCursor(t *testing.T) {
@@ -124,13 +118,5 @@ func TestClickPlacesInputCursor(t *testing.T) {
 	li := h.m.input.LineInfo()
 	if h.m.input.Line() != 0 || li.RowOffset != 1 || h.m.input.Column() != li.StartColumn+4 {
 		t.Errorf("wrapped: line %d row %d col %d (row starts at %d)", h.m.input.Line(), li.RowOffset, h.m.input.Column(), li.StartColumn)
-	}
-}
-
-func TestMiddleClickPastesIntoInput(t *testing.T) {
-	h := newHarnessWith(t, map[string]*fake.Backend{"fake": {}}, Options{Backend: "fake", Mouse: true})
-	click(h, 5, 3)
-	if cmd := h.m.handleMouse(tea.MouseClickMsg{X: 5, Y: 3, Button: tea.MouseMiddle}); cmd == nil || h.m.focus != focusInput {
-		t.Errorf("middle click: focus %v", h.m.focus)
 	}
 }

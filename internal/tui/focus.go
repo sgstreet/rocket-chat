@@ -51,8 +51,6 @@ func (m *model) transcriptKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return m.setFocus(focusInput), true
 	case "enter", "tab":
 		return m.setFocus(focusInput), true
-	case "ctrl+v":
-		return tea.Batch(m.setFocus(focusInput), m.paste()), true
 	case "ctrl+c", "ctrl+d", "ctrl+t", "shift+up", "shift+down":
 		return nil, false
 	default:

@@ -55,8 +55,6 @@ func (m *model) keyCommand(arg string) tea.Cmd {
 // handleKeyEntry handles keys while an API key is being typed.
 func (m *model) handleKeyEntry(msg tea.KeyPressMsg) tea.Cmd {
 	switch msg.String() {
-	case "ctrl+v":
-		return m.paste()
 	case "esc", "ctrl+c":
 		m.endKeyEntry()
 		m.notice("No key saved.")

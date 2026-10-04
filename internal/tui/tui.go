@@ -53,8 +53,8 @@ type Options struct {
 	// History keeps typed inputs between runs; nil keeps them only for
 	// this chat.
 	History History
-	// Mouse captures the mouse: the wheel scrolls, dragging selects and
-	// copies text, clicking a link opens it, and the middle button pastes.
+	// Mouse captures the mouse: the wheel scrolls, clicking moves the
+	// focus, and clicking a link opens it.
 	Mouse bool
 	// OpenURL opens a clicked link; nil uses the system's browser.
 	OpenURL func(url string) error
@@ -156,12 +156,11 @@ type model struct {
 	// inputLines is the input box height chosen with ui.input_lines or
 	// /lines; the screen may show fewer when it is short.
 	inputLines int
-	// sel is the mouse selection, if any; lines is the rendered transcript
-	// it refers to.
-	sel   *selection
+	// lines is the rendered transcript, for finding the link under a
+	// click.
 	lines []string
 	// flash is a short message shown in the help line until the next key
-	// or click, such as "copied 42 characters".
+	// or click, such as "opening https://…".
 	flash string
 	// focus is where keys go: the input box, or the conversation after it
 	// is clicked.
@@ -197,11 +196,15 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 	}
 	in.SetHeight(inputLines)
 	in.KeyMap.InsertNewline = key.NewBinding(key.WithKeys("alt+enter", "ctrl+j"))
+	// Pasting is left to the terminal (bracketed paste); Ctrl+V does not
+	// read the clipboard.
+	in.KeyMap.Paste.SetEnabled(false)
 	in.Focus()
 
 	keyIn := textinput.New()
 	keyIn.EchoMode = textinput.EchoPassword
 	keyIn.EchoCharacter = '•'
+	keyIn.KeyMap.Paste.SetEnabled(false)
 	// A steady cursor: the key prompt is short-lived.
 	keyStyles := keyIn.Styles()
 	keyStyles.Cursor.Blink = false
@@ -300,10 +303,6 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.MouseClickMsg, tea.MouseMotionMsg, tea.MouseReleaseMsg:
 		return m, m.handleMouse(msg)
 
-	case tea.ClipboardMsg:
-		// The terminal's clipboard, read for Ctrl+V or the middle button.
-		return m.Update(tea.PasteMsg{Content: msg.Content})
-
 	case linkFailedMsg:
 		_ = clipboard.WriteAll(msg.link)
 		m.flash = fmt.Sprintf("could not open the link (%v); copied it instead", msg.err)
@@ -338,15 +337,13 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if k != "tab" && k != "shift+tab" {
 		m.compl, m.complHint = nil, ""
 	}
-	m.sel, m.flash = nil, ""
+	m.flash = ""
 	if m.focus == focusTranscript {
 		if cmd, handled := m.transcriptKey(msg); handled {
 			return cmd, true
 		}
 	}
 	switch k {
-	case "ctrl+v":
-		return m.paste(), true
 	case "tab":
 		return m.complete(1)
 	case "shift+tab":
@@ -434,7 +431,7 @@ func (m *model) View() tea.View {
 		input = lipgloss.NewStyle().Height(m.inputHeight()).Render(m.keyInput.View())
 	}
 	v := tea.NewView(lipgloss.JoinVertical(lipgloss.Left,
-		m.viewportView(),
+		m.viewport.View(),
 		m.separator(),
 		m.statusLine(),
 		input,
