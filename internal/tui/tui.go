@@ -81,6 +81,12 @@ type Options struct {
 	// Fallback is opened instead of Backend, with a notice, when Backend
 	// cannot be opened; "" means no fallback.
 	Fallback string
+	// AutoCompact compacts the conversation before sending once it takes
+	// this share of the context window (0 turns it off). CompactKeep is
+	// how many of the latest messages compaction keeps as they are (0
+	// means DefaultCompactKeep).
+	AutoCompact float64
+	CompactKeep int
 }
 
 // Keys reads and saves backends' API keys.
@@ -125,10 +131,24 @@ type model struct {
 	// /backend switches to.
 	lastModels map[string]string
 	// windows caches context windows by backend and model (windowKey).
-	windows   map[string]int
-	modelName string
-	system    string
-	search    *bool
+	windows map[string]int
+	// summary stands in for the first compacted messages of the history
+	// when the conversation is sent. summaryRestricted marks a summary of
+	// grounded Gemini answers, sent only to Gemini. measureFrom is the
+	// first entry after the last compaction: backend counts from before it
+	// include the compacted messages.
+	summary           string
+	summaryRestricted bool
+	compacted         int
+	measureFrom       int
+	// compacting is set while the model writes a summary; noAutoCompact
+	// skips automatic compaction for the next question after a stopped
+	// one.
+	compacting    bool
+	noAutoCompact bool
+	modelName     string
+	system        string
+	search        *bool
 	// role is the ID of the active role; "" when the system prompt is
 	// custom or empty.
 	role  string
@@ -317,6 +337,9 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.gotWindow(msg)
 		return m, nil
 
+	case compactedMsg:
+		return m, m.gotCompaction(msg)
+
 	case modelsMsg:
 		if msg.forCompletion {
 			return m, m.modelsForCompletion(msg)
@@ -456,6 +479,9 @@ func (m *model) submit() tea.Cmd {
 	m.input.Reset()
 	m.remember(text)
 	m.entries = append(m.entries, &entry{kind: entryUser, msg: chat.Message{Role: chat.RoleUser, Text: text}})
+	if m.needsCompaction() {
+		return m.compact("", true)
+	}
 	return m.ask()
 }
 

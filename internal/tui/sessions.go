@@ -31,6 +31,7 @@ func (m *model) save() {
 	m.session.System = m.system
 	m.session.Role = m.role
 	m.session.Messages = history
+	m.session.Summary, m.session.Compacted, m.session.SummaryRestricted = m.summary, m.compacted, m.summaryRestricted
 	if err := m.opts.Store.Save(m.session); err != nil {
 		if !m.saveFailed {
 			m.errorf("Cannot save this chat: %v", err)
@@ -58,6 +59,11 @@ func (m *model) restore(sess *store.Session) {
 			kind = entryAssistant
 		}
 		m.entries = append(m.entries, &entry{kind: kind, msg: msg, done: true})
+	}
+	m.resetCompaction()
+	if sess.Summary != "" && sess.Compacted > 0 && sess.Compacted <= len(sess.Messages) {
+		m.summary, m.compacted, m.summaryRestricted = sess.Summary, sess.Compacted, sess.SummaryRestricted
+		m.markCompacted()
 	}
 	m.session = sess
 	m.notice("Resumed %q (%d messages, last updated %s).", sess.Title, len(sess.Messages), sess.Updated.Local().Format("2006-01-02 15:04"))
@@ -130,7 +136,7 @@ func (m *model) export(path string) {
 		}
 		path = "rocket-chat-" + id + ".md"
 	}
-	doc := render.Markdown(store.Title(history), history)
+	doc := render.Markdown(store.Title(history), history) + m.summaryMarkdown()
 	if err := os.WriteFile(path, []byte(doc), 0o644); err != nil {
 		m.errorf("Cannot export: %v", err)
 		return

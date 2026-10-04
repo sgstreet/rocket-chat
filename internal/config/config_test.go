@@ -198,3 +198,16 @@ func TestInputLines(t *testing.T) {
 		}
 	}
 }
+
+func TestCompactValidate(t *testing.T) {
+	for _, c := range []Compact{{}, {Auto: 0.85}, {Auto: 0.5, Keep: 2}} {
+		if err := c.Validate(); err != nil {
+			t.Errorf("%+v: %v", c, err)
+		}
+	}
+	for _, c := range []Compact{{Auto: 0.2}, {Auto: 1}, {Keep: -1}} {
+		if err := c.Validate(); err == nil {
+			t.Errorf("%+v accepted", c)
+		}
+	}
+}
