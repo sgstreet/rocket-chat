@@ -13,7 +13,7 @@ import (
 // commands are the slash commands Tab completes, in the order /help lists
 // them.
 var commands = []string{
-	"backend", "model", "role", "search", "key", "markdown", "lines", "context", "thinking",
+	"backend", "model", "role", "search", "key", "markdown", "lines", "context", "compact", "thinking",
 	"retry", "new", "sessions", "resume", "export", "copy", "help", "quit",
 }
 

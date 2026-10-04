@@ -72,6 +72,8 @@ type contextUse struct {
 	// rather than an estimate from the text.
 	measured bool
 	system   int
+	// summary is the share of the compaction summary.
+	summary  int
 	messages []chat.Message
 	largest  int // index in messages
 }
@@ -83,7 +85,10 @@ type contextUse struct {
 // that cut a conversation too long for its window (Ollama does) counts
 // only what it kept.
 func (m *model) contextUse() contextUse {
-	u := contextUse{system: estimateTokens(m.system), messages: chat.ForBackend(m.history(), m.backendName), largest: -1}
+	u := contextUse{system: estimateTokens(m.system), messages: m.requestMessages(), largest: -1}
+	if m.summarySent() {
+		u.summary = estimateTokens(m.requestSystem()) - u.system
+	}
 	largest := 0
 	for i, msg := range u.messages {
 		if n := estimateTokens(msg.Text); n > largest {
@@ -94,7 +99,7 @@ func (m *model) contextUse() contextUse {
 	// The last finished reply from this backend and model with a count.
 	model := m.effectiveModel()
 	base := -1
-	for i := len(m.entries) - 1; i >= 0; i-- {
+	for i := len(m.entries) - 1; i >= m.measureFrom; i-- {
 		e := m.entries[i]
 		if e.kind == entryAssistant && e.done && e.err == nil && e.usage != nil && e.usage.ContextTokens > 0 &&
 			e.msg.Backend == m.backendName && e.msg.Model == model {
@@ -102,7 +107,7 @@ func (m *model) contextUse() contextUse {
 			break
 		}
 	}
-	estimate := u.system
+	estimate := u.system + u.summary
 	for _, msg := range u.messages {
 		estimate += estimateTokens(msg.Text)
 	}
@@ -175,6 +180,12 @@ func (m *model) showContext(msg windowMsg) {
 		role = "custom"
 	}
 	fmt.Fprintf(&b, "\n  system prompt  ~%s tokens (%s)", thousands(u.system), role)
+	switch {
+	case u.summary > 0:
+		fmt.Fprintf(&b, "\n  summary        ~%s tokens, in place of %d compacted messages", thousands(u.summary), m.compacted)
+	case m.summary != "":
+		fmt.Fprintf(&b, "\n  summary        not sent: it summarizes Google Search results, which only go to %s", chat.GroundedBackend)
+	}
 	var questions, replies int
 	for _, msg := range u.messages {
 		if msg.Role == chat.RoleUser {
@@ -200,11 +211,11 @@ func (m *model) showContext(msg windowMsg) {
 		switch {
 		case u.tokens >= w && msg.backend == "ollama":
 			b.WriteString("\nThe conversation no longer fits the window, so Ollama drops the start of it and the model " +
-				"does not see your earlier messages. Raise backends.ollama.num_ctx if the GPU has room, or start a /new chat.")
+				"does not see your earlier messages. /compact summarizes them to make room, or raise backends.ollama.num_ctx if the GPU has memory for it.")
 		case u.tokens >= w:
-			b.WriteString("\nThe conversation no longer fits the window; the backend may refuse it or drop the start. Start a /new chat.")
+			b.WriteString("\nThe conversation no longer fits the window; the backend may refuse it or drop the start. /compact summarizes the older messages to make room.")
 		case float64(u.tokens) >= contextWarn*float64(w):
-			b.WriteString("\nThe conversation nearly fills the window; start a /new chat to keep answers reliable.")
+			b.WriteString("\nThe conversation nearly fills the window; /compact summarizes the older messages to make room.")
 			if msg.backend == "ollama" {
 				b.WriteString(" Raising backends.ollama.num_ctx gives Ollama more room if the GPU has memory for it.")
 			}

@@ -92,7 +92,7 @@ func (m *model) renderEntry(e *entry, width int) string {
 	var out string
 	switch e.kind {
 	case entryUser:
-		out = st.user.Render("You") + "\n" + wrap(e.msg.Text, width)
+		out = st.user.Render("You") + compactedLabel(e) + "\n" + wrap(e.msg.Text, width)
 	case entryNotice:
 		out = st.dim.Render(wrap(e.text, width))
 	case entryError:
@@ -106,13 +106,21 @@ func (m *model) renderEntry(e *entry, width int) string {
 	return out
 }
 
+// compactedLabel marks a message the summary stands in for.
+func compactedLabel(e *entry) string {
+	if !e.compacted {
+		return ""
+	}
+	return st.dim.Render(" · compacted")
+}
+
 func (m *model) renderReply(e *entry, width int) string {
 	var b strings.Builder
 	label := e.msg.Backend
 	if e.msg.Model != "" {
 		label += "/" + e.msg.Model
 	}
-	b.WriteString(st.assistant.Render(label))
+	b.WriteString(st.assistant.Render(label) + compactedLabel(e))
 
 	if t := strings.TrimSpace(e.msg.Thinking); t != "" {
 		b.WriteString("\n")
@@ -200,7 +208,10 @@ func (m *model) statusLine() string {
 	if warn := m.contextStatus(); warn != "" {
 		parts = append(parts, warn)
 	}
-	if m.streaming {
+	switch {
+	case m.compacting:
+		parts = append(parts, fmt.Sprintf("%s compacting… esc to stop", m.spinner.View()))
+	case m.streaming:
 		parts = append(parts, fmt.Sprintf("%s answering… esc to stop", m.spinner.View()))
 	}
 	line := " " + strings.Join(parts, st.status.Render(" · "))

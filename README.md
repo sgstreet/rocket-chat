@@ -64,7 +64,7 @@ default 3; `ui.input_lines` in the config makes it stick).
   Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name, or
   `/model default`),
-  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/context`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/context`, `/compact`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
@@ -79,6 +79,17 @@ default 3; `ui.input_lines` in the config makes it stick).
   `context NN%`. Ollama's default context is small, and when a conversation outgrows it Ollama
   silently drops the start, so the model no longer sees your earlier messages; `/context` says
   when this happens. Raise `backends.ollama.num_ctx` if your GPU has room.
+- `/compact` makes room in a long chat: the model writes a summary of the older messages, and from
+  then on the summary is sent in their place (added to the system prompt), followed by the latest
+  messages, which are kept word for word (the last 4 by default, `compact.keep`). `/compact <focus>`
+  says what the summary should keep, for example `/compact keep the code and the decisions`. The
+  older messages stay on screen, marked `compacted`, and in `/export`; saved chats keep the summary,
+  so `/resume` carries on from it. Compacting again folds the earlier summary into the new one, and
+  Esc stops a compaction in progress. A summary loses detail, so exact code or numbers from early in
+  the chat may come back paraphrased. With `compact.auto` set (for example `0.85`), the chat
+  compacts by itself before sending once it takes that share of the window. Gemini's answers
+  grounded with Google Search may only go back to Gemini, so a summary Gemini writes of them is only
+  sent to Gemini.
 - The chat remembers the backend you choose with `/backend` and, for each backend, the model you
   choose with `/model`, in `~/.local/share/rocket-chat/state.json` (with the role). A new chat
   starts with `-b` and `-m` if given, otherwise the remembered backend and its remembered model,
@@ -313,6 +324,8 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `ui.mouse` | `true` | Handle the mouse: wheel scrolls, click moves the focus and opens links |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |
 | `ui.input_lines` | `3` | How many lines the input box shows, 1–20 (`/lines <n>` changes it in a chat) |
+| `compact.auto` | `0` (off) | Compact a chat before sending once it takes this share of the context window, 0.5–0.95 |
+| `compact.keep` | `4` | How many of the latest messages `/compact` keeps word for word |
 | `ui.markdown` | `true` | Render finished replies as Markdown; `false` shows the model's text as it is (`/markdown` switches it in a chat) |
 | `sessions.save` | `true` | Save interactive chats |
 | `sessions.dir` | `~/.local/share/rocket-chat/sessions` (or `$XDG_DATA_HOME/rocket-chat/sessions`) | Where chats are saved; `~` is expanded |

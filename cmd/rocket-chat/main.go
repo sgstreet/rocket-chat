@@ -292,6 +292,10 @@ Flags:
 		if opts.InputLines, err = cfg.UI.InputLinesValue(); err != nil {
 			return fail(e, err)
 		}
+		if err := cfg.Compact.Validate(); err != nil {
+			return fail(e, err)
+		}
+		opts.AutoCompact, opts.CompactKeep = cfg.Compact.Auto, cfg.Compact.Keep
 		if cfg.UI.HistoryEnabled() {
 			// Without a history file the chat still has this run's inputs.
 			if path, err := store.DefaultHistoryPath(); err == nil {

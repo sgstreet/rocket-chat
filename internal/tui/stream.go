@@ -35,6 +35,8 @@ type entry struct {
 	done     bool
 	// interrupted marks a reply stopped by the user.
 	interrupted bool
+	// compacted marks a message the summary stands in for.
+	compacted bool
 	// err is set when the reply failed.
 	err error
 
@@ -55,11 +57,12 @@ type streamMsg struct {
 
 // ask sends the conversation to the backend and starts streaming the reply.
 func (m *model) ask() tea.Cmd {
+	m.noAutoCompact = false
 	req := backend.Request{
 		Model:    m.modelName,
-		System:   m.system,
+		System:   m.requestSystem(),
 		Search:   m.search,
-		Messages: chat.ForBackend(m.history(), m.backendName),
+		Messages: m.requestMessages(),
 	}
 	reply := &entry{kind: entryAssistant, msg: chat.Message{Role: chat.RoleAssistant, Backend: m.backendName, Model: m.effectiveModel()}}
 	m.entries = append(m.entries, reply)
@@ -106,14 +109,17 @@ func (m *model) ask() tea.Cmd {
 func (m *model) history() []chat.Message {
 	var out []chat.Message
 	for _, e := range m.entries {
-		switch {
-		case e.kind == entryUser:
-			out = append(out, e.msg)
-		case e.kind == entryAssistant && e.done && e.err == nil && e.msg.Text != "":
+		if inHistory(e) {
 			out = append(out, e.msg)
 		}
 	}
 	return out
+}
+
+// inHistory reports whether an entry is part of the conversation: a
+// question, or a finished reply with text.
+func inHistory(e *entry) bool {
+	return e.kind == entryUser || (e.kind == entryAssistant && e.done && e.err == nil && e.msg.Text != "")
 }
 
 // current returns the reply being streamed.
@@ -181,6 +187,10 @@ func (m *model) finish(e *entry) {
 
 // cancelReply stops the reply being streamed and keeps what arrived.
 func (m *model) cancelReply() {
+	if m.compacting {
+		m.stopCompaction()
+		return
+	}
 	if !m.streaming {
 		return
 	}

@@ -38,6 +38,30 @@ type Config struct {
 	Roles map[string]roles.Config `json:"roles"`
 	// DefaultRole is the role used when neither --role nor -s is given.
 	DefaultRole string `json:"default_role"`
+	// Compact configures summarizing long chats.
+	Compact Compact `json:"compact"`
+}
+
+// Compact is the compact config section.
+type Compact struct {
+	// Auto compacts a chat before sending once it takes this share of the
+	// model's context window, from 0.5 to 0.95; 0 (the default) turns it
+	// off.
+	Auto float64 `json:"auto"`
+	// Keep is how many of the latest messages compaction keeps as they are
+	// (default 4).
+	Keep int `json:"keep"`
+}
+
+// Validate checks the compact settings.
+func (c Compact) Validate() error {
+	if c.Auto != 0 && (c.Auto < 0.5 || c.Auto > 0.95) {
+		return fmt.Errorf("compact.auto must be from 0.5 to 0.95, or 0 to turn it off, not %g", c.Auto)
+	}
+	if c.Keep < 0 || c.Keep > 100 {
+		return fmt.Errorf("compact.keep must be from 1 to 100, not %d", c.Keep)
+	}
+	return nil
 }
 
 // Sessions is the sessions config section.

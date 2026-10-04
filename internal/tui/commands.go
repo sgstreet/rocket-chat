@@ -26,6 +26,8 @@ const helpText = `Commands:
   /markdown on|off       render replies as Markdown, or show the model's text as it is
   /lines [n]             show or set how many lines the input box shows (1-20)
   /context               show how much of the model's context window the chat takes
+  /compact [focus]       replace the older messages with a summary the model writes, so a long
+                         chat fits again; focus says what to keep (the messages stay on screen)
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -68,7 +70,11 @@ func (m *model) command(line string) (out tea.Cmd) {
 	name, arg, _ := strings.Cut(strings.TrimPrefix(line, "/"), " ")
 	arg = strings.TrimSpace(arg)
 	if m.streaming && !slices.Contains([]string{"help", "thinking", "quit", "exit", "copy"}, name) {
-		m.notice("Still answering; press Esc to stop it before /%s.", name)
+		if m.compacting {
+			m.notice("Still compacting; press Esc to stop it before /%s.", name)
+		} else {
+			m.notice("Still answering; press Esc to stop it before /%s.", name)
+		}
 		return nil
 	}
 
@@ -80,6 +86,7 @@ func (m *model) command(line string) (out tea.Cmd) {
 		return tea.Quit
 	case "new", "clear":
 		m.entries, m.session = nil, nil
+		m.resetCompaction()
 		m.notice("New conversation with %s.", m.backendName)
 	case "sessions":
 		m.listSessions()
@@ -110,6 +117,8 @@ func (m *model) command(line string) (out tea.Cmd) {
 		m.setLines(arg)
 	case "context":
 		return m.fetchWindow(true)
+	case "compact":
+		return m.compact(arg, false)
 	case "retry":
 		return m.retry()
 	default:
@@ -480,5 +489,8 @@ func (m *model) retry() tea.Cmd {
 		return nil
 	}
 	m.entries = m.entries[:last+1]
+	if m.needsCompaction() {
+		return m.compact("", true)
+	}
 	return m.ask()
 }

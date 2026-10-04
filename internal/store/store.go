@@ -29,6 +29,13 @@ type Session struct {
 	// Role is the ID of the role whose prompt System holds, if any.
 	Role     string         `json:"role,omitempty"`
 	Messages []chat.Message `json:"messages"`
+	// Summary stands in for the first Compacted messages when the chat is
+	// sent to a model; the messages are kept for reading.
+	// SummaryRestricted marks a summary of grounded Gemini answers, which
+	// is only sent to Gemini.
+	Summary           string `json:"summary,omitempty"`
+	Compacted         int    `json:"compacted,omitempty"`
+	SummaryRestricted bool   `json:"summary_restricted,omitempty"`
 }
 
 // Summary describes a saved session without its messages.
