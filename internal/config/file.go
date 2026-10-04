@@ -30,6 +30,12 @@ const DefaultFile = `{
       "search": {
         "enabled": true
       }
+    },
+    "zai": {
+      "api_key": "",
+      "search": {
+        "enabled": false
+      }
     }
   },
   "sessions": {

@@ -4,6 +4,7 @@ A terminal chat application in Go with pluggable backends:
 
 - **Ollama**: local models, with optional Ollama web search.
 - **Gemini**: answers grounded with Google Search.
+- **Z.ai**: the GLM models, with optional Z.ai web search.
 
 Status: early development. See [docs/PLAN.md](docs/PLAN.md) for the feature set and roadmap.
 
@@ -237,24 +238,25 @@ workflow with the version.
 
 ## API keys
 
-Gemini needs an API key (create one at https://aistudio.google.com/apikey). Ollama web search can use
+Gemini needs an API key (create one at https://aistudio.google.com/apikey), and so does Z.ai
+(https://z.ai/manage-apikey/apikey-list). Ollama web search can use
 an ollama.com API key (https://ollama.com/settings/keys) instead of `ollama signin`. Save them in the
 config file:
 
 ```sh
 rocket-chat --set-key gemini            # prompts for the key; nothing is shown as you type
-rocket-chat --set-key ollama < key.txt  # or pipe it in
+rocket-chat --set-key zai < key.txt     # or pipe it in
 rocket-chat -b gemini --set-key AIza…   # or give it directly (it stays in your shell history)
 rocket-chat --remove-key gemini
 ```
 
 In the chat, `/key` shows where each key comes from, `/key gemini` asks for the key at a hidden
 prompt and saves it, and `/key gemini clear` removes it. Starting a chat with Gemini when no key is
-set asks for one before the chat opens.
+set asks for one before the chat opens; so does Z.ai.
 
 Keys are stored as `backends.<name>.api_key` in `config.json`, which rocket-chat keeps readable only by
-you (mode 0600). The environment variables `GEMINI_API_KEY` (or `GOOGLE_API_KEY`) and
-`OLLAMA_API_KEY` still work and take precedence over a saved key.
+you (mode 0600). The environment variables `GEMINI_API_KEY` (or `GOOGLE_API_KEY`),
+`ZAI_API_KEY` and `OLLAMA_API_KEY` still work and take precedence over a saved key.
 
 ## Configuration
 
@@ -404,3 +406,32 @@ Google's terms require to be shown with grounded results. When stdout is not a t
 printed once complete with `[n]` citation markers after each supported passage; on a terminal it
 streams as it is generated and the sources follow. In the interactive chat, source titles and
 suggestions are clickable links (OSC 8), because Gemini's source URLs are long redirect links.
+
+### Z.ai
+
+`backends.zai` (choose it with `-b zai`, `/backend zai` or `"default_backend": "zai"`):
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `api_key` | none | Z.ai API key; `$ZAI_API_KEY` takes precedence (see [API keys](#api-keys)) |
+| `model` | `glm-5.3` | Model used when `-m` is not given |
+| `endpoint` | `auto` | `auto`, `general` (pay-as-you-go), `coding` (GLM Coding Plan), or an API URL |
+| `temperature` | model default | Sampling temperature |
+| `think` | model default | `true`/`false` turns reasoning on or off |
+| `search.enabled` | `false` | Web search default; `--search` overrides |
+| `search.engine` | `search-prime` | Z.ai search engine |
+| `search.count` | `5` | Results per search, 1–50 |
+| `search.recency` | no limit | `oneDay`, `oneWeek`, `oneMonth`, `oneYear` or `noLimit` |
+
+Save a key from https://z.ai/manage-apikey/apikey-list with `rocket-chat --set-key zai`, or set
+`ZAI_API_KEY`. `rocket-chat -b zai --list-models` lists the models.
+
+Z.ai has two endpoints: pay-as-you-go keys use the general one, GLM Coding Plan subscriptions the
+coding one. With `endpoint` set to `auto`, rocket-chat starts with the general endpoint and, if Z.ai
+answers that the key has no balance there, moves to the coding endpoint for the rest of the session
+and says so. Set `endpoint` to `coding` (or `general`) to skip that check.
+
+The models' reasoning streams as thinking (Ctrl+T in the chat, `--thinking` for one answer). With
+search on, Z.ai searches the web for the question and the model is asked to cite the results as
+`[n]`; the answer is followed by the sources it cited and the ones it only consulted. Searches count
+against your Z.ai plan, so search is off unless you turn it on.
