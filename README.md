@@ -6,7 +6,7 @@ A terminal chat application in Go with pluggable backends:
 - **Gemini**: answers grounded with Google Search.
 - **Z.ai**: the GLM models, with optional Z.ai web search.
 
-Status: early development. See [docs/PLAN.md](docs/PLAN.md) for the feature set and roadmap.
+Status: early development. Planned features are tracked as [GitHub issues](https://github.com/sgstreet/rocket-chat/issues).
 
 ## Installing
 
