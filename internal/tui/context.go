@@ -81,9 +81,9 @@ type contextUse struct {
 // contextUse sizes the conversation the next request would send: the
 // backend's count for the last reply on this backend and model, plus
 // estimates for what came after it, or estimates throughout when there is
-// no count. An estimate larger than the count wins, because a backend
-// that cut a conversation too long for its window (Ollama does) counts
-// only what it kept.
+// no count. An estimate more than half again above the count wins,
+// because a backend that cut a conversation too long for its window
+// (Ollama does) counts only what it kept.
 func (m *model) contextUse() contextUse {
 	u := contextUse{system: estimateTokens(m.system), messages: m.requestMessages(), largest: -1}
 	if m.summarySent() {
@@ -121,7 +121,9 @@ func (m *model) contextUse() contextUse {
 			measured += estimateTokens(e.msg.Text)
 		}
 	}
-	if measured >= estimate {
+	// Tokenizers differ from the estimate a little either way; an estimate
+	// far above the count means the backend cut the conversation.
+	if 2*estimate <= 3*measured {
 		u.tokens, u.measured = measured, true
 	}
 	return u

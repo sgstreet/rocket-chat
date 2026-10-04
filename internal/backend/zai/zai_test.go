@@ -84,6 +84,10 @@ func (fz *fakeZai) chat(ep string, w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusTooManyRequests)
 		_, _ = w.Write([]byte(`{"error":{"code":"1113","message":"Insufficient balance or no resource package. Please recharge."}}`))
 		return
+	case req.Model == "too-long":
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"1261","message":"Prompt exceeds max length"}}`))
+		return
 	case req.Model == "no-such-model":
 		w.WriteHeader(http.StatusBadRequest)
 		_, _ = w.Write([]byte(`{"error":{"code":"1211","message":"Unknown Model, please check the model code."}}`))
@@ -302,6 +306,8 @@ func TestErrors(t *testing.T) {
 	}{
 		"no balance": {Settings{Endpoint: EndpointGeneral}, helloReq, `set backends.zai.endpoint to "coding"`},
 		"bad key":    {Settings{Endpoint: EndpointCoding, APIKey: "wrong"}, helloReq, "API key was rejected"},
+		"too long": {Settings{Endpoint: EndpointCoding},
+			backend.Request{Model: "too-long", Messages: helloReq.Messages}, "/compact summarizes the older messages"},
 		"model": {Settings{Endpoint: EndpointCoding},
 			backend.Request{Model: "no-such-model", Messages: helloReq.Messages}, `model "no-such-model" is not available`},
 	} {
@@ -367,14 +373,14 @@ func TestLive(t *testing.T) {
 func TestContextWindow(t *testing.T) {
 	newFakeZai(t)
 	b := newBackend(t, Settings{Endpoint: EndpointCoding})
-	if n, _ := b.ContextWindow(t.Context(), "glm-4.6"); n != 204800 {
-		t.Errorf("glm-4.6: %d", n)
+	if n, _ := b.ContextWindow(t.Context(), ""); n != 1048576 {
+		t.Errorf("default model: %d", n)
 	}
 	if n, _ := b.ContextWindow(t.Context(), "glm-unknown"); n != 0 {
 		t.Errorf("unknown model: %d", n)
 	}
 	b = newBackend(t, Settings{Endpoint: EndpointCoding, ContextWindow: 65536})
-	if n, _ := b.ContextWindow(t.Context(), "glm-4.6"); n != 65536 {
+	if n, _ := b.ContextWindow(t.Context(), "glm-5.3"); n != 65536 {
 		t.Errorf("setting: %d", n)
 	}
 	// With search on, the prompt includes the results, so the context

@@ -84,3 +84,15 @@ func TestThousands(t *testing.T) {
 		}
 	}
 }
+
+func TestContextPrefersCountOverCloseEstimate(t *testing.T) {
+	// The backend counts a little less than the estimate (about 6 tokens
+	// for the question and 3 for the reply): its count is used.
+	b := &fake.Backend{Window: 1000, Script: replyWith("twelve chars", 5)}
+	h := newHarnessWith(t, map[string]*fake.Backend{"a": b}, Options{Backend: "a"})
+	h.typeAndSend("a question of 24 chars..")
+	h.typeAndSend("/context")
+	if got := h.last(entryNotice).text; !strings.Contains(got, "Context: 8 of 1,000") {
+		t.Errorf("got:\n%s", got)
+	}
+}

@@ -173,13 +173,17 @@ func (b *Backend) useCoding() bool {
 	return true
 }
 
-// contextWindows are the GLM models' context windows in tokens, since the
-// API does not report them.
+// contextWindows are GLM models' context windows in tokens, since the API
+// does not report them: the longest prompt each accepted (it refuses
+// longer ones with code 1261), measured on the GLM Coding Plan endpoint.
 var contextWindows = map[string]int{
-	"glm-4.5":     131072,
-	"glm-4.5-air": 131072,
-	"glm-4.6":     204800,
+	"glm-5.3":       1048576,
+	"glm-5.3-flash": 1048576,
 }
+
+// codeTooLong is Z.ai's error code for a prompt longer than the model's
+// context window.
+const codeTooLong = "1261"
 
 // ContextWindow returns the context_window setting, else the model's
 // window from the built-in table, else 0.
@@ -322,6 +326,8 @@ func (b *Backend) explain(ctx context.Context, err error, model string) error {
 			hint = "check that the GLM Coding Plan is active, or use a pay-as-you-go key with backends.zai.endpoint set to \"general\""
 		}
 		return fmt.Errorf("zai: %w; %s", err, hint)
+	case apiErr.Code == codeTooLong:
+		return fmt.Errorf("the conversation is longer than %s's context window: %w; /compact summarizes the older messages to make room, or start a /new chat", cmp.Or(model, "the model"), err)
 	case apiErr.Code == "1211" && model != "":
 		return fmt.Errorf("model %q is not available on Z.ai; /model lists the models (%w)", model, err)
 	case apiErr.Status == http.StatusTooManyRequests:
