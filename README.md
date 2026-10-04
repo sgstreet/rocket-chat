@@ -454,7 +454,7 @@ suggestions are clickable links (OSC 8), because Gemini's source URLs are long r
 | `search.engine` | `search-prime` | Z.ai search engine |
 | `search.count` | `5` | Results per search, 1–50 |
 | `search.recency` | no limit | `oneDay`, `oneWeek`, `oneMonth`, `oneYear` or `noLimit` |
-| `context_window` | built-in table | The model's context window in tokens, for `/context`, when the table does not know it |
+| `context_window` | built-in table | The model's context window in tokens, for `/context` and `compact.auto`; the table knows `glm-5.3` and `glm-5.3-flash` (1,048,576) |
 
 Save a key from https://z.ai/manage-apikey/apikey-list with `rocket-chat --set-key zai`, or set
 `ZAI_API_KEY`. `rocket-chat -b zai --list-models` lists the models.
