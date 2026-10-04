@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"maps"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,6 +88,11 @@ type Options struct {
 	// means DefaultCompactKeep).
 	AutoCompact float64
 	CompactKeep int
+	// Followups suggests follow-up questions under each reply.
+	// FollowupModels names the model to ask for them per backend; the
+	// chat's model is used otherwise.
+	Followups      bool
+	FollowupModels map[string]string
 }
 
 // Keys reads and saves backends' API keys.
@@ -146,9 +152,17 @@ type model struct {
 	// one.
 	compacting    bool
 	noAutoCompact bool
-	modelName     string
-	system        string
-	search        *bool
+	// followups are the suggestions shown under followFor, the latest
+	// reply; followGen tells current suggestion requests from stale ones,
+	// and followCancel stops the one in flight.
+	followupsOn  bool
+	followups    []string
+	followFor    *entry
+	followGen    int
+	followCancel context.CancelFunc
+	modelName    string
+	system       string
+	search       *bool
 	// role is the ID of the active role; "" when the system prompt is
 	// custom or empty.
 	role  string
@@ -271,6 +285,7 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		modelName:   cmp.Or(opts.Model, lastModels[opts.Backend]),
 		lastModels:  lastModels,
 		windows:     map[string]int{},
+		followupsOn: opts.Followups,
 		system:      opts.System,
 		role:        opts.Role,
 		roles:       cmp.Or(opts.Roles, roles.Builtin()),
@@ -340,6 +355,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case compactedMsg:
 		return m, m.gotCompaction(msg)
 
+	case followupsMsg:
+		m.gotFollowups(msg)
+		return m, nil
+
 	case modelsMsg:
 		if msg.forCompletion {
 			return m, m.modelsForCompletion(msg)
@@ -398,6 +417,11 @@ func (m *model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.compl, m.complHint = nil, ""
 	}
 	m.flash = ""
+	if n, err := strconv.Atoi(strings.TrimPrefix(k, "alt+")); err == nil && strings.HasPrefix(k, "alt+") {
+		if cmd, ok := m.useFollowup(n); ok {
+			return cmd, true
+		}
+	}
 	if m.focus == focusTranscript {
 		if cmd, handled := m.transcriptKey(msg); handled {
 			return cmd, true

@@ -24,6 +24,7 @@ const helpText = `Commands:
   /search on|off|default turn web search on or off for this chat
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
   /markdown on|off       render replies as Markdown, or show the model's text as it is
+  /followups on|off      suggest follow-up questions under each reply (alt+1-3 or a click uses one)
   /lines [n]             show or set how many lines the input box shows (1-20)
   /context               show how much of the model's context window the chat takes
   /compact [focus]       replace the older messages with a summary the model writes, so a long
@@ -85,6 +86,7 @@ func (m *model) command(line string) (out tea.Cmd) {
 		m.quitting = true
 		return tea.Quit
 	case "new", "clear":
+		m.clearFollowups()
 		m.entries, m.session = nil, nil
 		m.resetCompaction()
 		m.notice("New conversation with %s.", m.backendName)
@@ -111,6 +113,8 @@ func (m *model) command(line string) (out tea.Cmd) {
 		m.setSearch(arg)
 	case "key", "keys":
 		return m.keyCommand(arg)
+	case "followups":
+		m.setFollowups(arg)
 	case "markdown":
 		m.setMarkdown(arg)
 	case "lines":

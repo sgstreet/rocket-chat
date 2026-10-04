@@ -91,7 +91,16 @@ type UI struct {
 	// InputLines is how many lines the input box shows, 1 to 20 (default
 	// 3).
 	InputLines int `json:"input_lines"`
+	// Followups suggests follow-up questions under each reply (default
+	// on).
+	Followups *bool `json:"followups"`
+	// FollowupModels maps a backend to the model that suggests follow-ups
+	// there, such as a faster one; the chat's model is used otherwise.
+	FollowupModels map[string]string `json:"followup_models"`
 }
+
+// FollowupsEnabled reports whether follow-ups are suggested.
+func (u UI) FollowupsEnabled() bool { return u.Followups == nil || *u.Followups }
 
 // InputLinesValue checks ui.input_lines, returning 0 when it is unset.
 func (u UI) InputLinesValue() (int, error) {

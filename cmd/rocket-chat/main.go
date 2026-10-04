@@ -296,6 +296,7 @@ Flags:
 			return fail(e, err)
 		}
 		opts.AutoCompact, opts.CompactKeep = cfg.Compact.Auto, cfg.Compact.Keep
+		opts.Followups, opts.FollowupModels = cfg.UI.FollowupsEnabled(), cfg.UI.FollowupModels
 		if cfg.UI.HistoryEnabled() {
 			// Without a history file the chat still has this run's inputs.
 			if path, err := store.DefaultHistoryPath(); err == nil {

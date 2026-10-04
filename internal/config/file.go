@@ -46,7 +46,8 @@ const DefaultFile = `{
     "mouse": true,
     "history": true,
     "markdown": true,
-    "input_lines": 3
+    "input_lines": 3,
+    "followups": true
   },
   "roles": {}
 }
