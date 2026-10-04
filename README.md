@@ -332,7 +332,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `ui.mouse` | `true` | Handle the mouse: wheel scrolls, click moves the focus and opens links |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |
 | `ui.input_lines` | `3` | How many lines the input box shows, 1–20 (`/lines <n>` changes it in a chat) |
-| `ui.followups` | `true` | Suggest follow-up questions under each reply (`/followups on|off` in a chat) |
+| `ui.followups` | `true` | Suggest follow-up questions under each reply (`/followups on` or `off` in a chat) |
 | `ui.followup_models` | none | Model per backend for the suggestions, e.g. `{"zai": "glm-5.3-flash"}`; otherwise the chat's model |
 | `compact.auto` | `0` (off) | Compact a chat before sending once it takes this share of the context window, 0.5–0.95 |
 | `compact.keep` | `4` | How many of the latest messages `/compact` keeps word for word |
