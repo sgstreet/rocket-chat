@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/ollama/ollama/api"
 
+	"github.com/sgstreet/rocket-chat/internal/backend"
 	"github.com/sgstreet/rocket-chat/internal/chat"
 )
 
@@ -161,19 +161,15 @@ func truncateUTF8(s string, n int) string {
 
 func isRuneStart(b byte) bool { return b&0xC0 != 0x80 }
 
-var citation = regexp.MustCompile(`\[(\d+(?:\s*,\s*\d+)*)\]`)
-
 // grounding returns the sources, marking those the answer cites.
 func (t *searchTurn) grounding(answer string) *chat.Grounding {
 	if len(t.sources) == 0 && len(t.queries) == 0 {
 		return nil
 	}
 	sources := append([]chat.Source(nil), t.sources...)
-	for _, m := range citation.FindAllStringSubmatch(answer, -1) {
-		for _, num := range strings.Split(m[1], ",") {
-			if n, err := strconv.Atoi(strings.TrimSpace(num)); err == nil && n >= 1 && n <= len(sources) {
-				sources[n-1].Cited = true
-			}
+	for _, n := range backend.CitedNumbers(answer) {
+		if n >= 1 && n <= len(sources) {
+			sources[n-1].Cited = true
 		}
 	}
 	return &chat.Grounding{Sources: sources, Queries: t.queries}

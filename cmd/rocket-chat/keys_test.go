@@ -60,7 +60,7 @@ func TestSetKeyFromStdin(t *testing.T) {
 func TestSetKeyErrors(t *testing.T) {
 	clearKeyEnv(t)
 	key := "k"
-	if r := cli(t, t.Context(), &key, "--set-key", "fake"); r.code != exitUsage || !strings.Contains(r.errOut, "takes a backend name (gemini, ollama)") {
+	if r := cli(t, t.Context(), &key, "--set-key", "fake"); r.code != exitUsage || !strings.Contains(r.errOut, "takes a backend name (gemini, ollama, zai)") {
 		t.Errorf("not a backend with a key: %+v", r)
 	}
 	if r := cli(t, t.Context(), nil, "--set-key", "gemini"); r.code != exitUsage || !strings.Contains(r.errOut, "reads the key from stdin") {

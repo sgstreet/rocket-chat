@@ -30,6 +30,7 @@ import (
 	_ "github.com/sgstreet/rocket-chat/internal/backend/fake"
 	_ "github.com/sgstreet/rocket-chat/internal/backend/gemini"
 	"github.com/sgstreet/rocket-chat/internal/backend/ollama"
+	_ "github.com/sgstreet/rocket-chat/internal/backend/zai"
 )
 
 // version is set at build time with -ldflags "-X main.version=...".
