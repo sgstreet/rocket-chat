@@ -62,12 +62,21 @@ default 3; `ui.input_lines` in the config makes it stick).
   scroll it (the bottom line says so); clicking the input box, pressing Esc or Enter, or just typing
   goes back to the input. Clicking inside the input puts the cursor there, in multi-line input too.
   Clicking a link opens it without moving the focus.
-- `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name),
+- `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name, or
+  `/model default`),
   `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
   `set -g set-clipboard on`.
+- The chat remembers the backend you choose with `/backend` and, for each backend, the model you
+  choose with `/model`, in `~/.local/share/rocket-chat/state.json` (with the role). A new chat
+  starts with `-b` and `-m` if given, otherwise the remembered backend and its remembered model,
+  otherwise `default_backend` and the backend's `model` setting. `-b` and `-m` apply to that run
+  only and are not remembered, and `/model default` goes back to the backend's default model.
+  One-shot answers do not use the remembered choices, so scripts are not affected by what you pick
+  in a chat. If the remembered backend cannot be opened (for example its key was removed), the
+  chat starts with `default_backend` and says why.
 - Switching from Gemini to another backend keeps the conversation, but answers grounded with
   Google Search are not sent to the other backend (Gemini API terms).
 - Chats are saved after every reply, in `~/.local/share/rocket-chat/sessions/` (see
@@ -289,7 +298,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `default_backend` | `ollama` | Backend used when `-b` is not given |
+| `default_backend` | `ollama` | Backend used when `-b` is not given and no backend was chosen with `/backend` in a chat |
 | `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
 | `ui.mouse` | `true` | Handle the mouse: wheel scrolls, drag copies, click opens links, middle button pastes |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |

@@ -14,8 +14,9 @@ import (
 )
 
 const helpText = `Commands:
-  /backend [name]        show backends, or switch to one
-  /model [name|number]   list models, or choose one (by name or list number)
+  /backend [name]        show backends, or switch to one; the choice is remembered
+  /model [name|number]   list models, or choose one (by name or list number); the choice is
+                         remembered for this backend · /model default goes back to its default
   /role                  show the prompt in use and list the roles
   /role <name>|off       switch to a role, or use no prompt
   /role custom <text>    use your own prompt for this chat
@@ -137,7 +138,12 @@ func (m *model) switchBackend(name string) {
 		m.errorf("Cannot switch to %s: %v", name, err)
 		return
 	}
-	m.b, m.backendName, m.modelName, m.models = b, name, "", nil
+	m.b, m.backendName, m.modelName, m.models = b, name, m.lastModels[name], nil
+	if m.opts.RememberBackend != nil {
+		if err := m.opts.RememberBackend(name); err != nil {
+			m.errorf("The backend will not be remembered: %v", err)
+		}
+	}
 	model := m.effectiveModel()
 	if model == "" {
 		model = "default model"
@@ -171,8 +177,24 @@ func (m *model) chooseModel(arg string) tea.Cmd {
 		}
 		arg = m.models[n-1].Name
 	}
-	m.modelName = arg
-	m.notice("Using model %s.", arg)
+	if arg == "default" {
+		m.modelName = ""
+		delete(m.lastModels, m.backendName)
+		if def := m.effectiveModel(); def != "" {
+			m.notice("Using %s's default model, %s.", m.backendName, def)
+		} else {
+			m.notice("Using %s's default model.", m.backendName)
+		}
+	} else {
+		m.modelName = arg
+		m.lastModels[m.backendName] = arg
+		m.notice("Using model %s.", arg)
+	}
+	if m.opts.RememberModel != nil {
+		if err := m.opts.RememberModel(m.backendName, m.modelName); err != nil {
+			m.errorf("The model will not be remembered: %v", err)
+		}
+	}
 	return nil
 }
 

@@ -172,11 +172,11 @@ func (m *model) argOptions(cmd string, before []string) []string {
 		case "backend":
 			return m.opts.Backends
 		case "model":
-			names := make([]string, len(m.models))
-			for i, md := range m.models {
-				names[i] = md.Name
+			names := make([]string, 0, len(m.models)+1)
+			for _, md := range m.models {
+				names = append(names, md.Name)
 			}
-			return names
+			return append(names, "default")
 		case "role", "roles":
 			return append([]string{"show", "custom", "off"}, m.roles.Names()...)
 		case "search":
