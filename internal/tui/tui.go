@@ -5,6 +5,7 @@ import (
 	"cmp"
 	"context"
 	"fmt"
+	"maps"
 	"strings"
 	"time"
 
@@ -68,6 +69,18 @@ type Options struct {
 	// a named role, otherwise a custom prompt, or neither for none. Nil
 	// remembers nothing.
 	RememberRole func(id, prompt string) error
+	// Models maps backends to the model last chosen for each with /model.
+	// A backend without an entry, or with Model set at the start, uses
+	// that instead.
+	Models map[string]string
+	// RememberBackend and RememberModel save the backend and model chosen
+	// with /backend and /model for the next run; model "" means the
+	// backend's default. Nil remembers nothing.
+	RememberBackend func(name string) error
+	RememberModel   func(backend, model string) error
+	// Fallback is opened instead of Backend, with a notice, when Backend
+	// cannot be opened; "" means no fallback.
+	Fallback string
 }
 
 // Keys reads and saves backends' API keys.
@@ -108,9 +121,12 @@ type model struct {
 
 	backendName string
 	b           backend.Backend
-	modelName   string
-	system      string
-	search      *bool
+	// lastModels maps backends to the model last chosen for each, which
+	// /backend switches to.
+	lastModels map[string]string
+	modelName  string
+	system     string
+	search     *bool
 	// role is the ID of the active role; "" when the system prompt is
 	// custom or empty.
 	role  string
@@ -183,8 +199,18 @@ type model struct {
 
 func newModel(ctx context.Context, opts Options) (*model, error) {
 	b, err := opts.Open(opts.Backend)
+	var fellBack string
+	if err != nil && opts.Fallback != "" && opts.Fallback != opts.Backend {
+		fellBack = fmt.Sprintf("Cannot open %s (%v); using %s.", opts.Backend, err, opts.Fallback)
+		opts.Backend = opts.Fallback
+		b, err = opts.Open(opts.Backend)
+	}
 	if err != nil {
 		return nil, err
+	}
+	lastModels := maps.Clone(opts.Models)
+	if lastModels == nil {
+		lastModels = map[string]string{}
 	}
 	in := textarea.New()
 	in.Placeholder = "Ask anything. Enter sends, Alt+Enter adds a line, /help lists commands."
@@ -220,7 +246,8 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		opts:        opts,
 		backendName: opts.Backend,
 		b:           b,
-		modelName:   opts.Model,
+		modelName:   cmp.Or(opts.Model, lastModels[opts.Backend]),
+		lastModels:  lastModels,
 		system:      opts.System,
 		role:        opts.Role,
 		roles:       cmp.Or(opts.Roles, roles.Builtin()),
@@ -235,6 +262,9 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 	m.setStyles()
 	if r, ok := m.roles.Find(m.role); ok && m.role != "" && !m.searchSet {
 		m.search = r.Search
+	}
+	if fellBack != "" {
+		m.errorf("%s", fellBack)
 	}
 	if opts.Resume != nil {
 		m.restore(opts.Resume)

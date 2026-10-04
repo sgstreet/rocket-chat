@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"slices"
 	"strings"
 	"testing"
@@ -367,5 +368,63 @@ func TestSwitchingReleasesTheOldModel(t *testing.T) {
 	h.typeAndSend("/backend a")
 	if got := b.Released(); len(got) != 0 {
 		t.Errorf("b released %q", got)
+	}
+}
+
+func TestRememberedBackendAndModel(t *testing.T) {
+	a := &fake.Backend{Caps: backend.Capabilities{DefaultModel: "a-default"}}
+	b := &fake.Backend{Caps: backend.Capabilities{DefaultModel: "b-default"}}
+	var backends []string
+	models := map[string]string{}
+	opts := Options{
+		Backend: "a",
+		Models:  map[string]string{"a": "a1", "b": "b1"},
+		RememberBackend: func(name string) error {
+			backends = append(backends, name)
+			return nil
+		},
+		RememberModel: func(backend, model string) error {
+			models[backend] = model
+			return nil
+		},
+	}
+	h := newHarnessWith(t, map[string]*fake.Backend{"a": a, "b": b}, opts)
+	if h.m.modelName != "a1" {
+		t.Fatalf("starting model = %q, want the remembered a1", h.m.modelName)
+	}
+
+	h.typeAndSend("/model a2")
+	h.typeAndSend("/backend b")
+	if h.m.modelName != "b1" || !slices.Equal(backends, []string{"b"}) {
+		t.Errorf("after /backend b: model %q, remembered backends %q", h.m.modelName, backends)
+	}
+	h.typeAndSend("/model default")
+	if h.m.effectiveModel() != "b-default" || !slices.ContainsFunc(h.m.entries, func(e *entry) bool {
+		return strings.Contains(e.text, "default model, b-default")
+	}) {
+		t.Errorf("/model default: model %q", h.m.effectiveModel())
+	}
+	// Back on a, the model chosen there earlier is used again.
+	h.typeAndSend("/backend a")
+	if h.m.modelName != "a2" {
+		t.Errorf("back on a: model %q, want a2", h.m.modelName)
+	}
+	if want := map[string]string{"a": "a2", "b": ""}; !maps.Equal(models, want) {
+		t.Errorf("remembered models %v, want %v", models, want)
+	}
+
+	// -m wins over the remembered model.
+	opts.Model = "flag-model"
+	h = newHarnessWith(t, map[string]*fake.Backend{"a": a, "b": b}, opts)
+	if h.m.modelName != "flag-model" {
+		t.Errorf("with -m: model %q", h.m.modelName)
+	}
+}
+
+func TestFallbackBackend(t *testing.T) {
+	ok := &fake.Backend{}
+	h := newHarnessWith(t, map[string]*fake.Backend{"ok": ok}, Options{Backend: "gone", Fallback: "ok"})
+	if h.m.backendName != "ok" || !strings.Contains(h.last(entryError).text, "Cannot open gone") {
+		t.Errorf("backend %q", h.m.backendName)
 	}
 }

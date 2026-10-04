@@ -8,12 +8,16 @@ import (
 )
 
 // State is what rocket-chat remembers between runs that is not a chat or
-// a setting: currently the role last chosen with /role.
+// a setting: the role, backend and models last chosen in a chat.
 type State struct {
 	// Role is the last role chosen: a role ID, RoleCustom (Prompt holds
 	// the text) or RoleOff. Empty means none was chosen yet.
 	Role   string `json:"role,omitempty"`
 	Prompt string `json:"prompt,omitempty"`
+	// Backend is the backend last chosen with /backend.
+	Backend string `json:"backend,omitempty"`
+	// Models maps backends to the model last chosen for each with /model.
+	Models map[string]string `json:"models,omitempty"`
 }
 
 // Values of State.Role that are not role IDs.

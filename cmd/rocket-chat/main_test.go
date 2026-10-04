@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -662,7 +663,7 @@ func TestRememberedRole(t *testing.T) {
 	var errOut bytes.Buffer
 	e := env{statePath: path, stderr: &errOut}
 
-	if s := loadState(e); s != (store.State{}) {
+	if s := loadState(e); !reflect.DeepEqual(s, store.State{}) {
 		t.Errorf("no file: %+v", s)
 	}
 	for _, tt := range []struct {
@@ -676,7 +677,7 @@ func TestRememberedRole(t *testing.T) {
 		if err := rememberRole(e, tt.id, tt.prompt); err != nil {
 			t.Fatal(err)
 		}
-		if got := loadState(e); got != tt.want {
+		if got := loadState(e); !reflect.DeepEqual(got, tt.want) {
 			t.Errorf("remember(%q, %q) = %+v, want %+v", tt.id, tt.prompt, got, tt.want)
 		}
 	}
@@ -684,12 +685,51 @@ func TestRememberedRole(t *testing.T) {
 	if err := os.WriteFile(path, []byte("not json"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if s := loadState(e); s != (store.State{}) || !strings.Contains(errOut.String(), "ignoring") {
+	if s := loadState(e); !reflect.DeepEqual(s, store.State{}) || !strings.Contains(errOut.String(), "ignoring") {
 		t.Errorf("broken file: %+v, stderr %q", s, errOut.String())
 	}
 	// Without a path nothing is read or written.
 	if err := rememberRole(env{}, "technical", ""); err != nil {
 		t.Error(err)
+	}
+}
+
+func TestRememberedBackendAndModel(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	e := env{statePath: path, stderr: io.Discard}
+	for _, step := range []func() error{
+		func() error { return rememberRole(e, "technical", "") },
+		func() error { return rememberBackend(e, "zai") },
+		func() error { return rememberModel(e, "zai", "glm-5") },
+		func() error { return rememberModel(e, "ollama", "qwen3") },
+		func() error { return rememberModel(e, "ollama", "") }, // back to the default
+	} {
+		if err := step(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	want := store.State{Role: "technical", Backend: "zai", Models: map[string]string{"zai": "glm-5"}}
+	if got := loadState(e); !reflect.DeepEqual(got, want) {
+		t.Errorf("state = %+v, want %+v", got, want)
+	}
+}
+
+func TestStartBackend(t *testing.T) {
+	known := []string{"gemini", "ollama", "zai"}
+	for _, tt := range []struct {
+		flag, remembered string
+		name, fallback   string
+	}{
+		{"", "", "ollama", ""},
+		{"", "zai", "zai", "ollama"},
+		{"gemini", "zai", "gemini", ""}, // -b wins
+		{"", "ollama", "ollama", ""},
+		{"", "gone", "ollama", ""}, // no longer a backend
+	} {
+		name, fallback := startBackend(tt.flag, "ollama", tt.remembered, known)
+		if name != tt.name || fallback != tt.fallback {
+			t.Errorf("startBackend(%q, remembered %q) = %q, %q; want %q, %q", tt.flag, tt.remembered, name, fallback, tt.name, tt.fallback)
+		}
 	}
 }
 

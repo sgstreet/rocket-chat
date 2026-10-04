@@ -12,6 +12,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"runtime/debug"
+	"slices"
 	"strings"
 	"syscall"
 	"text/tabwriter"
@@ -222,10 +223,7 @@ Flags:
 		return fail(e, err)
 	}
 
-	name := o.backend
-	if name == "" {
-		name = cfg.DefaultBackend
-	}
+	name, fallback := startBackend(o.backend, cfg.DefaultBackend, last.Backend, backend.Names())
 	// Every backend opened is closed on the way out, which stops any local
 	// server it started.
 	var opened []backend.Backend
@@ -276,8 +274,12 @@ Flags:
 			RememberRole: func(id, prompt string) error {
 				return rememberRole(e, id, prompt)
 			},
-			Open:     open,
-			Backends: backend.Names(),
+			Models:          last.Models,
+			RememberBackend: func(name string) error { return rememberBackend(e, name) },
+			RememberModel:   func(b, model string) error { return rememberModel(e, b, model) },
+			Fallback:        fallback,
+			Open:            open,
+			Backends:        backend.Names(),
 		}
 		if err := sessionOptions(cfg.Sessions, o, role, &opts); err != nil {
 			return fail(e, err)
@@ -547,21 +549,66 @@ func loadState(e env) store.State {
 	return s
 }
 
-// rememberRole saves the role chosen with /role: id for a named role, or
-// a custom prompt, or neither for no prompt.
-func rememberRole(e env, id, prompt string) error {
+// startBackend picks the backend to start with: flag (-b), else remembered
+// (the one last chosen with /backend in a chat, when it still exists), else
+// def. fallback is def when the remembered backend was picked, for use if
+// it cannot be opened.
+func startBackend(flag, def, remembered string, known []string) (name, fallback string) {
+	switch {
+	case flag != "":
+		return flag, ""
+	case remembered != "" && remembered != def && slices.Contains(known, remembered):
+		return remembered, def
+	}
+	return def, ""
+}
+
+// updateState changes the remembered state with f and saves it.
+func updateState(e env, f func(*store.State)) error {
 	if e.statePath == "" {
 		return nil
 	}
-	s := store.State{Role: id}
-	switch {
-	case id != "":
-	case prompt != "":
-		s = store.State{Role: store.RoleCustom, Prompt: prompt}
-	default:
-		s.Role = store.RoleOff
+	s, err := store.LoadState(e.statePath)
+	if err != nil {
+		s = store.State{} // a broken file was reported at the start
 	}
+	f(&s)
 	return store.SaveState(e.statePath, s)
+}
+
+// rememberRole saves the role chosen with /role: id for a named role, or
+// a custom prompt, or neither for no prompt.
+func rememberRole(e env, id, prompt string) error {
+	return updateState(e, func(s *store.State) {
+		switch {
+		case id != "":
+			s.Role, s.Prompt = id, ""
+		case prompt != "":
+			s.Role, s.Prompt = store.RoleCustom, prompt
+		default:
+			s.Role, s.Prompt = store.RoleOff, ""
+		}
+	})
+}
+
+// rememberBackend saves the backend chosen with /backend.
+func rememberBackend(e env, name string) error {
+	return updateState(e, func(s *store.State) { s.Backend = name })
+}
+
+// rememberModel saves the model chosen with /model for backendName; "" forgets
+// it, so the backend's default applies.
+func rememberModel(e env, backendName, model string) error {
+	return updateState(e, func(s *store.State) {
+		if model == "" {
+			delete(s.Models, backendName)
+			return
+		}
+		if s.Models == nil {
+			s.Models = map[string]string{}
+		}
+		s.Models[backendName] = model
+	})
 }
 
 // listRoles prints the roles, marking the one a new chat starts with.
