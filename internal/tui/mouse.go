@@ -28,6 +28,11 @@ func (m *model) handleMouse(msg tea.Msg) tea.Cmd {
 	switch {
 	case click.Y < m.viewport.Height():
 		if line := m.viewport.YOffset() + click.Y; line < len(m.lines) {
+			if n := m.followupAt(m.lines[line]); n > 0 {
+				if cmd, ok := m.useFollowup(n); ok {
+					return cmd
+				}
+			}
 			if link := linkAt(m.lines[line], click.X); link != "" {
 				return m.openLink(link)
 			}

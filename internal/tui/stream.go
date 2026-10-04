@@ -58,6 +58,7 @@ type streamMsg struct {
 // ask sends the conversation to the backend and starts streaming the reply.
 func (m *model) ask() tea.Cmd {
 	m.noAutoCompact = false
+	m.clearFollowups()
 	req := backend.Request{
 		Model:    m.modelName,
 		System:   m.requestSystem(),
@@ -144,7 +145,7 @@ func (m *model) handleStream(sm streamMsg) tea.Cmd {
 		return nil
 	case sm.end:
 		m.finish(e)
-		return m.fetchWindow(false)
+		return tea.Batch(m.fetchWindow(false), m.startFollowups(e))
 	}
 
 	ev := sm.ev
@@ -166,7 +167,7 @@ func (m *model) handleStream(sm streamMsg) tea.Cmd {
 	case backend.EventDone:
 		m.finish(e)
 		// The window can change once a model is loaded.
-		return m.fetchWindow(false)
+		return tea.Batch(m.fetchWindow(false), m.startFollowups(e))
 	}
 	m.refresh()
 	return sm.next

@@ -64,7 +64,7 @@ default 3; `ui.input_lines` in the config makes it stick).
   Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name, or
   `/model default`),
-  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/context`, `/compact`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/followups on|off`, `/lines`, `/context`, `/compact`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
@@ -79,6 +79,14 @@ default 3; `ui.input_lines` in the config makes it stick).
   `context NN%`. Ollama's default context is small, and when a conversation outgrows it Ollama
   silently drops the start, so the model no longer sees your earlier messages; `/context` says
   when this happens. Raise `backends.ollama.num_ctx` if your GPU has room.
+- Under each reply the chat suggests three follow-up questions. Alt+1, Alt+2 or Alt+3, or a click
+  on one, puts it in the input box to edit or send. They come from a small second request to the
+  same model once the reply is done (with search and reasoning off), so they appear a moment after
+  the answer and count as an extra request with providers that bill or limit by request.
+  `ui.followup_models` can name a faster model per backend, for example
+  `{"zai": "glm-5.3-flash"}`. Suggestions are never sent back to the model or saved, and they go
+  away when you ask something else. `/followups off` turns them off for the chat, and
+  `"ui": {"followups": false}` turns them off for good.
 - `/compact` makes room in a long chat: the model writes a summary of the older messages, and from
   then on the summary is sent in their place (added to the system prompt), followed by the latest
   messages, which are kept word for word (the last 4 by default, `compact.keep`). `/compact <focus>`
@@ -324,6 +332,8 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `ui.mouse` | `true` | Handle the mouse: wheel scrolls, click moves the focus and opens links |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |
 | `ui.input_lines` | `3` | How many lines the input box shows, 1–20 (`/lines <n>` changes it in a chat) |
+| `ui.followups` | `true` | Suggest follow-up questions under each reply (`/followups on|off` in a chat) |
+| `ui.followup_models` | none | Model per backend for the suggestions, e.g. `{"zai": "glm-5.3-flash"}`; otherwise the chat's model |
 | `compact.auto` | `0` (off) | Compact a chat before sending once it takes this share of the context window, 0.5–0.95 |
 | `compact.keep` | `4` | How many of the latest messages `/compact` keeps word for word |
 | `ui.markdown` | `true` | Render finished replies as Markdown; `false` shows the model's text as it is (`/markdown` switches it in a chat) |

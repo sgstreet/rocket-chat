@@ -120,6 +120,7 @@ func (m *model) compact(focus string, auto bool) tea.Cmd {
 	restricted := (m.summaryRestricted && m.summarySent()) ||
 		(m.backendName == chat.GroundedBackend && len(chat.ForBackend(part, "")) != len(part))
 
+	m.clearFollowups()
 	ctx, cancel := context.WithCancel(m.ctx)
 	m.gen++
 	m.cancel = cancel

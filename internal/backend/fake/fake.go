@@ -52,6 +52,9 @@ type Backend struct {
 
 	// Window is returned by ContextWindow.
 	Window int
+	// Reply, when set, chooses the events for each request instead of
+	// Script.
+	Reply func(backend.Request) []backend.Event
 
 	mu       sync.Mutex
 	requests []backend.Request
@@ -103,6 +106,9 @@ func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backe
 	b.mu.Unlock()
 
 	events, finalErr := b.Script, b.Err
+	if b.Reply != nil {
+		events = b.Reply(req)
+	}
 	if events == nil && finalErr == nil {
 		events = echo(req)
 	}

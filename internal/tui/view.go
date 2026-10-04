@@ -81,6 +81,9 @@ func (m *model) transcript() string {
 	parts := make([]string, 0, len(m.entries))
 	for _, e := range m.entries {
 		parts = append(parts, m.renderEntry(e, width))
+		if e == m.followFor && len(m.followups) > 0 {
+			parts = append(parts, m.renderFollowups(width))
+		}
 	}
 	return strings.Join(parts, "\n\n")
 }
