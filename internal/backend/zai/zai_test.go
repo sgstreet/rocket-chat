@@ -363,3 +363,28 @@ func TestLive(t *testing.T) {
 		t.Fatalf("live chat: %+v", r)
 	}
 }
+
+func TestContextWindow(t *testing.T) {
+	newFakeZai(t)
+	b := newBackend(t, Settings{Endpoint: EndpointCoding})
+	if n, _ := b.ContextWindow(t.Context(), "glm-4.6"); n != 204800 {
+		t.Errorf("glm-4.6: %d", n)
+	}
+	if n, _ := b.ContextWindow(t.Context(), "glm-unknown"); n != 0 {
+		t.Errorf("unknown model: %d", n)
+	}
+	b = newBackend(t, Settings{Endpoint: EndpointCoding, ContextWindow: 65536})
+	if n, _ := b.ContextWindow(t.Context(), "glm-4.6"); n != 65536 {
+		t.Errorf("setting: %d", n)
+	}
+	// With search on, the prompt includes the results, so the context
+	// size is left unknown.
+	on := true
+	r := collect(t, b, backend.Request{Search: &on, Messages: helloReq.Messages})
+	if r.usage == nil || r.usage.ContextTokens != 0 {
+		t.Errorf("search usage = %+v", r.usage)
+	}
+	if r := collect(t, b, helloReq); r.usage == nil || r.usage.ContextTokens != 17 {
+		t.Errorf("usage = %+v", r.usage)
+	}
+}

@@ -39,6 +39,10 @@ type fakeServer struct {
 	requests []api.ChatRequest
 	// unloaded lists the models unload requests named.
 	unloaded []string
+	// running is what /api/ps lists; contextLength is the context length
+	// /api/show reports.
+	running       []api.ProcessModelResponse
+	contextLength int
 }
 
 func newFakeServer(t *testing.T, chunks ...api.ChatResponse) *fakeServer {
@@ -52,6 +56,9 @@ func newFakeServer(t *testing.T, chunks ...api.ChatResponse) *fakeServer {
 	})
 	mux.HandleFunc("POST /api/show", fs.show)
 	mux.HandleFunc("POST /api/generate", fs.generate)
+	mux.HandleFunc("GET /api/ps", func(w http.ResponseWriter, _ *http.Request) {
+		_ = json.NewEncoder(w).Encode(api.ProcessResponse{Models: fs.running})
+	})
 	mux.HandleFunc("POST /api/experimental/web_search", fs.webSearch)
 	mux.HandleFunc("POST /api/experimental/web_fetch", fs.webFetch)
 	fs.Server = httptest.NewServer(mux)
@@ -129,6 +136,9 @@ func (fs *fakeServer) show(w http.ResponseWriter, r *http.Request) {
 		caps = []string{"completion", "tools"}
 	}
 	resp := map[string]any{"capabilities": caps}
+	if fs.contextLength > 0 {
+		resp["model_info"] = map[string]any{"general.architecture": "gptoss", "gptoss.context_length": fs.contextLength}
+	}
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
@@ -221,7 +231,7 @@ func TestChatStream(t *testing.T) {
 		{Kind: backend.EventThinkingDelta, Text: "hmm"},
 		{Kind: backend.EventTextDelta, Text: "Hello"},
 		{Kind: backend.EventTextDelta, Text: " world"},
-		{Kind: backend.EventUsage, Usage: &backend.Usage{InputTokens: 12, OutputTokens: 3}},
+		{Kind: backend.EventUsage, Usage: &backend.Usage{InputTokens: 12, OutputTokens: 3, ContextTokens: 12}},
 		{Kind: backend.EventDone},
 	}
 	if len(events) != len(want) {
@@ -488,5 +498,25 @@ func TestReleaseModel(t *testing.T) {
 	}
 	if release("qwen3") {
 		t.Error("released with unload_on_switch off")
+	}
+}
+
+func TestContextWindow(t *testing.T) {
+	fs := newFakeServer(t)
+	fs.running = []api.ProcessModelResponse{{Name: "qwen3:0.6b", Model: "qwen3:0.6b", ContextLength: 4096}}
+	fs.contextLength = 131072
+	b := newBackend(t, Settings{Host: fs.URL, Model: "qwen3:0.6b"})
+	for model, want := range map[string]int{
+		"":                  4096,   // the default model, loaded
+		"llama3":            0,      // not loaded: the server has not picked a context yet
+		"gpt-oss:20b-cloud": 131072, // cloud models run with their full context
+	} {
+		if n, err := b.ContextWindow(t.Context(), model); err != nil || n != want {
+			t.Errorf("%q: window %d, %v; want %d", model, n, err, want)
+		}
+	}
+	b = newBackend(t, Settings{Host: fs.URL, NumCtx: 16384})
+	if n, err := b.ContextWindow(t.Context(), "llama3"); err != nil || n != 16384 {
+		t.Errorf("num_ctx: window %d, %v", n, err)
 	}
 }

@@ -124,9 +124,11 @@ type model struct {
 	// lastModels maps backends to the model last chosen for each, which
 	// /backend switches to.
 	lastModels map[string]string
-	modelName  string
-	system     string
-	search     *bool
+	// windows caches context windows by backend and model (windowKey).
+	windows   map[string]int
+	modelName string
+	system    string
+	search    *bool
 	// role is the ID of the active role; "" when the system prompt is
 	// custom or empty.
 	role  string
@@ -248,6 +250,7 @@ func newModel(ctx context.Context, opts Options) (*model, error) {
 		b:           b,
 		modelName:   cmp.Or(opts.Model, lastModels[opts.Backend]),
 		lastModels:  lastModels,
+		windows:     map[string]int{},
 		system:      opts.System,
 		role:        opts.Role,
 		roles:       cmp.Or(opts.Roles, roles.Builtin()),
@@ -308,6 +311,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case releasedMsg:
 		m.showReleased(msg)
+		return m, nil
+
+	case windowMsg:
+		m.gotWindow(msg)
 		return m, nil
 
 	case modelsMsg:

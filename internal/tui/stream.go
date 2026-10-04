@@ -138,7 +138,7 @@ func (m *model) handleStream(sm streamMsg) tea.Cmd {
 		return nil
 	case sm.end:
 		m.finish(e)
-		return nil
+		return m.fetchWindow(false)
 	}
 
 	ev := sm.ev
@@ -159,7 +159,8 @@ func (m *model) handleStream(sm streamMsg) tea.Cmd {
 		e.usage = ev.Usage
 	case backend.EventDone:
 		m.finish(e)
-		return nil
+		// The window can change once a model is loaded.
+		return m.fetchWindow(false)
 	}
 	m.refresh()
 	return sm.next

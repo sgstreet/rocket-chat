@@ -74,6 +74,12 @@ func (f *fakeAPI) serve(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"models":[
 		  {"name":"models/gemini-3.8-flash","displayName":"Gemini 3.8 Flash","inputTokenLimit":1048576,"supportedGenerationMethods":["generateContent","countTokens"]},
 		  {"name":"models/text-embedding-004","displayName":"Embedding","supportedGenerationMethods":["embedContent"]}]}`)
+	case r.Method == http.MethodGet && strings.Contains(r.URL.Path, "/models/"):
+		f.mu.Lock()
+		f.paths = append(f.paths, r.URL.Path)
+		f.mu.Unlock()
+		name := r.URL.Path[strings.LastIndex(r.URL.Path, "/")+1:]
+		_, _ = fmt.Fprintf(w, `{"name":"models/%s","inputTokenLimit":1048576}`, name)
 	case strings.HasSuffix(r.URL.Path, ":streamGenerateContent"):
 		var body map[string]any
 		_ = json.NewDecoder(r.Body).Decode(&body)
@@ -161,7 +167,7 @@ func TestChatGrounded(t *testing.T) {
 	if thinking.String() != "Looking up the final." {
 		t.Errorf("thinking = %q", thinking.String())
 	}
-	if usage == nil || *usage != (backend.Usage{InputTokens: 312, OutputTokens: 25, SearchQueries: 2}) {
+	if usage == nil || *usage != (backend.Usage{InputTokens: 312, OutputTokens: 25, ContextTokens: 12, SearchQueries: 2}) {
 		t.Errorf("usage = %+v", usage)
 	}
 
@@ -397,5 +403,19 @@ func TestLive(t *testing.T) {
 	t.Logf("answer: %s\n%s", render.Cite(answer.String(), g), render.Sources(g))
 	if g == nil || len(g.Sources) == 0 {
 		t.Error("expected grounded sources")
+	}
+}
+
+func TestContextWindow(t *testing.T) {
+	f := newFakeAPI(t)
+	b := newBackend(t, f, Settings{})
+	for range 2 {
+		n, err := b.ContextWindow(t.Context(), "gemini-3.8-flash")
+		if err != nil || n != 1048576 {
+			t.Fatalf("window = %d, %v", n, err)
+		}
+	}
+	if len(f.paths) != 1 || !strings.HasSuffix(f.paths[0], "/models/gemini-3.8-flash") {
+		t.Errorf("requests %q; want one, then the cache", f.paths)
 	}
 }

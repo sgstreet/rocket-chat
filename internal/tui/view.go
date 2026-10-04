@@ -197,6 +197,9 @@ func (m *model) statusLine() string {
 	case m.system != "":
 		parts = append(parts, "role: custom")
 	}
+	if warn := m.contextStatus(); warn != "" {
+		parts = append(parts, warn)
+	}
 	if m.streaming {
 		parts = append(parts, fmt.Sprintf("%s answering… esc to stop", m.spinner.View()))
 	}

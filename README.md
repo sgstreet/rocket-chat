@@ -64,11 +64,21 @@ default 3; `ui.input_lines` in the config makes it stick).
   Clicking a link opens it without moving the focus.
 - `/help` lists the commands: `/backend`, `/model` (lists models; pick by number or name, or
   `/model default`),
-  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/thinking`, `/retry`, `/new`,
+  `/role`, `/search on|off|default`, `/key`, `/markdown on|off`, `/lines`, `/context`, `/thinking`, `/retry`, `/new`,
   `/sessions`, `/resume`, `/export`, `/copy`, `/quit`.
 - `/copy` copies the last reply, `/copy code` its last code block and `/copy 2` its second one. It
   uses the terminal's OSC 52 clipboard support, so it works over SSH; in tmux, enable
   `set -g set-clipboard on`.
+- `/context` shows how much of the model's context window the conversation takes: the tokens in use
+  out of the window, the system prompt's share, the number of messages and the largest one. The
+  count comes from the backend after each reply; before the first reply, or when a backend cuts a
+  conversation that is too long, it is estimated from the text (about four characters a token) and
+  marked `~`. The window comes from the backend: Gemini reports each model's limit, Ollama the
+  context it runs the model with (known once the model is loaded, or `num_ctx` when set), and for
+  Z.ai a built-in table or the `context_window` setting. From 80% the status line shows
+  `context NN%`. Ollama's default context is small, and when a conversation outgrows it Ollama
+  silently drops the start, so the model no longer sees your earlier messages; `/context` says
+  when this happens. Raise `backends.ollama.num_ctx` if your GPU has room.
 - The chat remembers the backend you choose with `/backend` and, for each backend, the model you
   choose with `/model`, in `~/.local/share/rocket-chat/state.json` (with the role). A new chat
   starts with `-b` and `-m` if given, otherwise the remembered backend and its remembered model,
@@ -316,7 +326,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 | `model` | none | Model used when `-m` is not given |
 | `cloud_models` | `true` | List the ollama.com cloud models in `/model` and `--list-models` (see below) |
 | `temperature` | model default | Sampling temperature |
-| `num_ctx` | model default | Context window in tokens |
+| `num_ctx` | server default | Context window in tokens; Ollama's default is small, see `/context` |
 | `keep_alive` | Ollama default | How long the model stays loaded |
 | `unload_on_exit` | `true` | Unload the models used when rocket-chat exits, unless another running copy uses them (see below) |
 | `unload_on_switch` | `true` | Unload a model when the chat moves to another model or backend, unless another running copy uses it |
@@ -431,6 +441,7 @@ suggestions are clickable links (OSC 8), because Gemini's source URLs are long r
 | `search.engine` | `search-prime` | Z.ai search engine |
 | `search.count` | `5` | Results per search, 1–50 |
 | `search.recency` | no limit | `oneDay`, `oneWeek`, `oneMonth`, `oneYear` or `noLimit` |
+| `context_window` | built-in table | The model's context window in tokens, for `/context`, when the table does not know it |
 
 Save a key from https://z.ai/manage-apikey/apikey-list with `rocket-chat --set-key zai`, or set
 `ZAI_API_KEY`. `rocket-chat -b zai --list-models` lists the models.

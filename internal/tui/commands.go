@@ -25,6 +25,7 @@ const helpText = `Commands:
   /key [backend [clear]] show API keys, or save one (typed hidden) or remove it
   /markdown on|off       render replies as Markdown, or show the model's text as it is
   /lines [n]             show or set how many lines the input box shows (1-20)
+  /context               show how much of the model's context window the chat takes
   /thinking              show or hide the model's reasoning (also ctrl+t)
   /retry                 ask the last question again
   /new                   start a new conversation
@@ -107,6 +108,8 @@ func (m *model) command(line string) (out tea.Cmd) {
 		m.setMarkdown(arg)
 	case "lines":
 		m.setLines(arg)
+	case "context":
+		return m.fetchWindow(true)
 	case "retry":
 		return m.retry()
 	default:

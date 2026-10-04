@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"google.golang.org/genai"
@@ -79,6 +80,23 @@ type Backend struct {
 	client   *genai.Client
 	settings Settings
 	now      func() time.Time
+	// windows caches context windows by model.
+	windows sync.Map
+}
+
+// ContextWindow returns the model's input token limit.
+func (b *Backend) ContextWindow(ctx context.Context, model string) (int, error) {
+	model = cmp.Or(model, b.settings.Model, DefaultModel)
+	if v, ok := b.windows.Load(model); ok {
+		return v.(int), nil
+	}
+	m, err := b.client.Models.Get(ctx, model, nil)
+	if err != nil {
+		return 0, explain(ctx, err, model, false)
+	}
+	n := int(m.InputTokenLimit)
+	b.windows.Store(model, n)
+	return n, nil
 }
 
 // New creates a backend. A nil httpClient uses the SDK default.
@@ -157,6 +175,7 @@ func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backe
 			}
 			if u := resp.UsageMetadata; u != nil {
 				usage.InputTokens = int(u.PromptTokenCount + u.ToolUsePromptTokenCount)
+				usage.ContextTokens = int(u.PromptTokenCount)
 				usage.OutputTokens = int(u.CandidatesTokenCount + u.ThoughtsTokenCount)
 			}
 			if len(resp.Candidates) == 0 {

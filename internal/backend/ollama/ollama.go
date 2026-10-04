@@ -391,7 +391,7 @@ func (b *Backend) streamRound(ctx context.Context, cr *api.ChatRequest, emit emi
 		}
 		r.toolCalls = append(r.toolCalls, resp.Message.ToolCalls...)
 		if resp.Done {
-			r.usage = backend.Usage{InputTokens: resp.PromptEvalCount, OutputTokens: resp.EvalCount}
+			r.usage = backend.Usage{InputTokens: resp.PromptEvalCount, OutputTokens: resp.EvalCount, ContextTokens: resp.PromptEvalCount}
 		}
 		return nil
 	})
@@ -458,6 +458,10 @@ func (b *Backend) chatWithSearch(ctx context.Context, model string, cr *api.Chat
 		answer.WriteString(r.content)
 		usage.InputTokens += r.usage.InputTokens
 		usage.OutputTokens += r.usage.OutputTokens
+		if n == 0 {
+			// Later rounds add search results the next request leaves out.
+			usage.ContextTokens = r.usage.ContextTokens
+		}
 		if len(r.toolCalls) == 0 || cr.Tools == nil {
 			break
 		}
