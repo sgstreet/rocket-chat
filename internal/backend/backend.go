@@ -51,6 +51,14 @@ type ModelReleaser interface {
 	ReleaseModel(ctx context.Context, model string) (bool, error)
 }
 
+// ContextWindower is implemented by backends that can tell how much
+// conversation a model takes.
+type ContextWindower interface {
+	// ContextWindow returns the context window of model, or the backend's
+	// default model when model is "", in tokens; 0 means not known.
+	ContextWindow(ctx context.Context, model string) (int, error)
+}
+
 // PartialList is the error Models returns, along with the models it did
 // list, when some could not be listed.
 type PartialList struct {
@@ -149,6 +157,10 @@ func Close(b Backend) error {
 type Usage struct {
 	InputTokens  int
 	OutputTokens int
+	// ContextTokens is the size of the conversation the model read for
+	// this reply (system prompt and messages, without search results), as
+	// the model counts it; 0 when not known.
+	ContextTokens int
 	// SearchQueries is the number of web searches run, which some providers
 	// bill for.
 	SearchQueries int

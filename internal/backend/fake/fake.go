@@ -50,10 +50,16 @@ type Backend struct {
 	// returned.
 	ModelList []backend.ModelInfo
 
+	// Window is returned by ContextWindow.
+	Window int
+
 	mu       sync.Mutex
 	requests []backend.Request
 	released []string
 }
+
+// ContextWindow returns Window.
+func (b *Backend) ContextWindow(context.Context, string) (int, error) { return b.Window, nil }
 
 // ReleaseModel records model, and reports it freed.
 func (b *Backend) ReleaseModel(_ context.Context, model string) (bool, error) {

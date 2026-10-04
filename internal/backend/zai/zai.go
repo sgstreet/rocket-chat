@@ -89,6 +89,9 @@ type Settings struct {
 	Think *bool `json:"think"`
 	// Search configures Z.ai web search.
 	Search SearchSettings `json:"search"`
+	// ContextWindow is the model's context window in tokens, for /context
+	// and compaction, when the built-in table does not know it.
+	ContextWindow int `json:"context_window"`
 }
 
 // SearchSettings is the backends.zai.search config section.
@@ -170,6 +173,23 @@ func (b *Backend) useCoding() bool {
 	return true
 }
 
+// contextWindows are the GLM models' context windows in tokens, since the
+// API does not report them.
+var contextWindows = map[string]int{
+	"glm-4.5":     131072,
+	"glm-4.5-air": 131072,
+	"glm-4.6":     204800,
+}
+
+// ContextWindow returns the context_window setting, else the model's
+// window from the built-in table, else 0.
+func (b *Backend) ContextWindow(_ context.Context, model string) (int, error) {
+	if b.settings.ContextWindow > 0 {
+		return b.settings.ContextWindow, nil
+	}
+	return contextWindows[cmp.Or(model, b.settings.Model, DefaultModel)], nil
+}
+
 func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, b.baseURL()+"/models", nil)
 	if err != nil {
@@ -198,7 +218,8 @@ func (b *Backend) Models(ctx context.Context) ([]backend.ModelInfo, error) {
 func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backend.Event, error] {
 	return func(yield func(backend.Event, error) bool) {
 		model := cmp.Or(req.Model, b.settings.Model, DefaultModel)
-		body, err := json.Marshal(b.chatRequest(model, req))
+		cr := b.chatRequest(model, req)
+		body, err := json.Marshal(cr)
 		if err != nil {
 			yield(backend.Event{}, err)
 			return
@@ -219,7 +240,7 @@ func (b *Backend) Chat(ctx context.Context, req backend.Request) iter.Seq2[backe
 			return
 		}
 		defer func() { _ = resp.Body.Close() }()
-		if err := b.stream(ctx, resp.Body, yield); err != nil {
+		if err := b.stream(ctx, resp.Body, len(cr.Tools) > 0, yield); err != nil {
 			yield(backend.Event{}, b.explain(ctx, err, model))
 		}
 	}
@@ -411,7 +432,8 @@ type searchResult struct {
 }
 
 // stream reads the server-sent events of a reply and yields its events.
-func (b *Backend) stream(ctx context.Context, body io.Reader, yield func(backend.Event, error) bool) error {
+// searched reports whether web search was on.
+func (b *Backend) stream(ctx context.Context, body io.Reader, searched bool, yield func(backend.Event, error) bool) error {
 	var (
 		answer  strings.Builder
 		results []searchResult
@@ -438,6 +460,10 @@ read:
 			}
 			if c.Usage != nil {
 				usage = &backend.Usage{InputTokens: c.Usage.PromptTokens, OutputTokens: c.Usage.CompletionTokens}
+				if !searched {
+					// With search on, the prompt includes the results.
+					usage.ContextTokens = c.Usage.PromptTokens
+				}
 			}
 			for _, ch := range c.Choices {
 				if t := ch.Delta.ReasoningContent; t != "" && !yield(backend.Event{Kind: backend.EventThinkingDelta, Text: t}, nil) {

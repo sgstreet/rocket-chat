@@ -103,7 +103,7 @@ func TestSearchLoop(t *testing.T) {
 	if c.kinds[len(c.kinds)-1] != backend.EventDone {
 		t.Errorf("last event %v, want Done", c.kinds[len(c.kinds)-1])
 	}
-	if c.usage == nil || *c.usage != (backend.Usage{InputTokens: 900, OutputTokens: 23, SearchQueries: 1}) {
+	if c.usage == nil || *c.usage != (backend.Usage{InputTokens: 900, OutputTokens: 23, ContextTokens: 100, SearchQueries: 1}) {
 		t.Errorf("usage = %+v", c.usage)
 	}
 
