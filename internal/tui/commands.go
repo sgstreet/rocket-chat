@@ -38,10 +38,10 @@ Keys: enter sends · alt+enter or ctrl+j adds a line · esc stops an answer
       up/down (or ctrl+p/ctrl+n) recall earlier inputs, which can be edited before sending
       tab completes commands and their arguments; press it again to cycle, shift+tab goes back
       pgup/pgdn, shift+up/down and the mouse wheel scroll · ctrl+t shows reasoning
-Mouse: drag to select text, which is copied · click a link to open it
-      ctrl+v or the middle button pastes
+Mouse: click a link to open it · /copy copies a reply or code block
       click the conversation to scroll it with the keys (up/down, pgup/pgdn, home/end);
-      click the input box, press esc or start typing to go back to it`
+      click the input box, press esc or start typing to go back to it
+      your terminal's own selection and paste work with shift held (option on macOS)`
 
 // modelsMsg carries the result of listing models for /model.
 type modelsMsg struct {

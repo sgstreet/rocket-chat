@@ -83,47 +83,6 @@ func colOf(t *testing.T, h *harness, row int, text string) int {
 	return ansi.StringWidth(plain[:strings.Index(plain, text)])
 }
 
-func TestDragSelectsAndCopies(t *testing.T) {
-	var opened []string
-	h := mouseHarness(t, &opened)
-	r1, r3 := rowOf(t, h, "alpha"), rowOf(t, h, "third")
-	x1 := colOf(t, h, r1, "beta")
-	x3 := colOf(t, h, r3, "line") + 3
-
-	h.send(tea.MouseClickMsg{X: x1, Y: r1, Button: tea.MouseLeft})
-	h.send(tea.MouseMotionMsg{X: x3, Y: r3, Button: tea.MouseLeft})
-	if v := h.m.viewportView(); !strings.Contains(v, "\x1b[7m") {
-		t.Error("selection not highlighted")
-	}
-	var copied string
-	_, cmd := h.m.Update(tea.MouseReleaseMsg{X: x3, Y: r3, Button: tea.MouseLeft})
-	if cmd == nil {
-		t.Fatal("no clipboard command")
-	}
-	copied = h.m.selectedText()
-	if !strings.HasPrefix(copied, "beta gamma\n") || !strings.HasSuffix(copied, "third line") || !strings.Contains(copied, "https://example.com/page") {
-		t.Errorf("copied %q", copied)
-	}
-	if !strings.Contains(h.view(), "copied ") {
-		t.Errorf("no flash:\n%s", h.view())
-	}
-	if len(opened) != 0 {
-		t.Error("a drag opened a link")
-	}
-
-	// Dragging backwards selects the same way.
-	h.send(tea.MouseClickMsg{X: x3, Y: r3, Button: tea.MouseLeft})
-	h.send(tea.MouseMotionMsg{X: x1, Y: r1, Button: tea.MouseLeft})
-	if got := h.m.selectedText(); got != copied {
-		t.Errorf("backwards selection %q", got)
-	}
-	// A key press clears the selection and the flash.
-	h.m.Update(tea.KeyPressMsg{Code: tea.KeyLeft})
-	if h.m.sel != nil || h.m.flash != "" {
-		t.Error("selection kept after a key")
-	}
-}
-
 func TestClickOpensLink(t *testing.T) {
 	var opened []string
 	h := mouseHarness(t, &opened)
@@ -167,27 +126,33 @@ func TestOpenLinkRules(t *testing.T) {
 	}
 }
 
-func TestPasteFromTerminalClipboard(t *testing.T) {
+func TestPaste(t *testing.T) {
 	var opened []string
 	h := mouseHarness(t, &opened)
 	h.m.input.SetValue("say: ")
 	h.m.input.CursorEnd()
-	h.m.Update(tea.ClipboardMsg{Content: "two\nlines"})
+	// The terminal's own paste (bracketed paste) lands in the input box.
+	h.m.Update(tea.PasteMsg{Content: "two\nlines"})
 	if got := h.m.input.Value(); got != "say: two\nlines" {
 		t.Errorf("input = %q", got)
+	}
+	// Ctrl+V and the middle button do not read the clipboard.
+	if _, cmd := h.m.Update(tea.KeyPressMsg{Code: 'v', Mod: tea.ModCtrl}); cmd != nil {
+		if msg := cmd(); msg != nil {
+			t.Errorf("ctrl+v produced %T", msg)
+		}
+	}
+	if cmd := h.m.handleMouse(tea.MouseClickMsg{Button: tea.MouseMiddle}); cmd != nil {
+		t.Error("middle click did something")
+	}
+	if got := h.m.input.Value(); got != "say: two\nlines" {
+		t.Errorf("input after ctrl+v = %q", got)
 	}
 	// In the key prompt, pasted text goes to the hidden field.
 	h.m.opts.Keys = &memKeys{saved: map[string]string{}}
 	h.typeAndSend("/key a")
-	h.m.Update(tea.ClipboardMsg{Content: "sk-123"})
+	h.m.Update(tea.PasteMsg{Content: "sk-123"})
 	if h.m.keyInput.Value() != "sk-123" || strings.Contains(h.view(), "sk-123") {
 		t.Errorf("key prompt = %q", h.m.keyInput.Value())
-	}
-	// Ctrl+V and the middle button both ask for the clipboard.
-	if _, handled := h.m.handleKey(tea.KeyPressMsg{Code: 'v', Mod: tea.ModCtrl}); !handled {
-		t.Error("ctrl+v not handled")
-	}
-	if cmd := h.m.handleMouse(tea.MouseClickMsg{Button: tea.MouseMiddle}); cmd == nil {
-		t.Error("middle click does not paste")
 	}
 }

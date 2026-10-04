@@ -46,18 +46,18 @@ default 3; `ui.input_lines` in the config makes it stick).
   `/role show technical`, `/backend `, `/model ` (the model list is fetched on the first Tab), `/search `,
   `/key `. With several matches the bottom line lists them and Tab (Shift+Tab backwards)
   cycles through them.
-- Copy and paste with the mouse on (the default):
-  - Drag over the conversation to select text; it is copied to the clipboard when you let go.
+- The mouse (on by default):
+  - The wheel scrolls the conversation.
   - Links are underlined. Click one to open it in your browser; links in replies, Gemini sources and URLs you typed all
     work. Only `http`, `https` and `mailto` links are opened; over SSH the link is copied instead,
     since a browser would open on the remote machine.
-  - Ctrl+V or the middle button pastes. Your terminal's own paste (Ctrl+Shift+V, Cmd+V) works too.
-  - `/copy` copies the last reply or one of its code blocks without selecting.
-  - Copying uses the terminal (OSC 52, which also works over SSH) and the system clipboard where
-    there is one, so it works in terminals without OSC 52 such as GNOME Terminal. Pasting reads the
-    system clipboard, or asks the terminal over OSC 52 when there is none.
-  - Most terminals still do their own selection while Shift is held. To leave the mouse to the
-    terminal entirely, set `"ui": {"mouse": false}`.
+  - To select or paste text, use your terminal's own selection and paste: most terminals do their
+    own selection while Shift is held (Option on macOS), and their paste key (Ctrl+Shift+V,
+    Cmd+V) works as usual. To leave the mouse to the terminal entirely, set
+    `"ui": {"mouse": false}`.
+- `/copy` copies the last reply or one of its code blocks. Copying uses the terminal (OSC 52, which
+  also works over SSH) and the system clipboard where there is one, so it works in terminals
+  without OSC 52 such as GNOME Terminal.
 - Click to choose where keys go. Clicking the conversation lets Up/Down, PgUp/PgDn and Home/End
   scroll it (the bottom line says so); clicking the input box, pressing Esc or Enter, or just typing
   goes back to the input. Clicking inside the input puts the cursor there, in multi-line input too.
@@ -300,7 +300,7 @@ Durations such as `keep_alive` and `since` are strings with a unit: `"30s"`, `"1
 |---|---|---|
 | `default_backend` | `ollama` | Backend used when `-b` is not given and no backend was chosen with `/backend` in a chat |
 | `ui.theme` | `auto` | `auto` (follow the terminal), `dark` or `light` |
-| `ui.mouse` | `true` | Handle the mouse: wheel scrolls, drag copies, click opens links, middle button pastes |
+| `ui.mouse` | `true` | Handle the mouse: wheel scrolls, click moves the focus and opens links |
 | `ui.history` | `true` | Save typed inputs for Up/Down between chats |
 | `ui.input_lines` | `3` | How many lines the input box shows, 1–20 (`/lines <n>` changes it in a chat) |
 | `ui.markdown` | `true` | Render finished replies as Markdown; `false` shows the model's text as it is (`/markdown` switches it in a chat) |
