@@ -178,6 +178,74 @@ func TestSearchMaxRounds(t *testing.T) {
 	if len(reqs[1].Tools) == 0 || len(reqs[2].Tools) != 0 {
 		t.Errorf("tools per call: %d, %d, %d; want tools removed on the last", len(reqs[0].Tools), len(reqs[1].Tools), len(reqs[2].Tools))
 	}
+	// The last call says the tools are gone and asks for the answer.
+	if last := reqs[2].Messages[len(reqs[2].Messages)-1]; last.Role != "user" || last.Content != answerNow.Content {
+		t.Errorf("last message of the final call = %+v, want the answer-now request", last)
+	}
+}
+
+// A model that stops after reading the results, without answering, is
+// asked once more, without tools, so the reply is not just the sources.
+func TestSearchAsksForAnswerAfterEmptyRound(t *testing.T) {
+	fs := newFakeServer(t)
+	fs.rounds = [][]api.ChatResponse{
+		{text("Let me check."), toolCall(toolWebSearch, "query", "euro 2024 winner"), done(100, 10)},
+		{done(300, 0)}, // stops with no text and no tool calls
+		{text("Spain won [1]."), done(400, 5)},
+	}
+	b := searchBackend(t, fs)
+	c := collect(t, b, helloReq)
+	if c.err != nil {
+		t.Fatal(c.err)
+	}
+	if want := "Let me check.\n\nSpain won [1]."; c.text != want {
+		t.Errorf("text = %q, want %q", c.text, want)
+	}
+	reqs := fs.chatRequests()
+	if len(reqs) != 3 {
+		t.Fatalf("%d chat calls, want 3", len(reqs))
+	}
+	last := reqs[2]
+	if len(last.Tools) != 0 {
+		t.Errorf("answer-now call has %d tools, want none", len(last.Tools))
+	}
+	if m := last.Messages[len(last.Messages)-1]; m.Role != "user" || m.Content != answerNow.Content {
+		t.Errorf("last message = %+v, want the answer-now request", m)
+	}
+	if c.grounding == nil || !c.grounding.Sources[0].Cited {
+		t.Errorf("grounding = %+v, want source 1 cited", c.grounding)
+	}
+}
+
+// The answer-now request is made once: a model that still says nothing
+// ends the reply rather than looping.
+func TestSearchAsksForAnswerOnce(t *testing.T) {
+	fs := newFakeServer(t)
+	fs.rounds = [][]api.ChatResponse{
+		{toolCall(toolWebSearch, "query", "q"), done(1, 1)},
+		{done(1, 0)},
+	}
+	b := searchBackend(t, fs)
+	if c := collect(t, b, helloReq); c.err != nil {
+		t.Fatal(c.err)
+	}
+	if n := len(fs.chatRequests()); n != 3 {
+		t.Errorf("%d chat calls, want 3 (search, empty, answer-now)", n)
+	}
+}
+
+// Without any tool call there are no results to answer from, so an empty
+// reply is not retried.
+func TestSearchNoRetryWithoutToolCalls(t *testing.T) {
+	fs := newFakeServer(t)
+	fs.rounds = [][]api.ChatResponse{{done(1, 0)}}
+	b := searchBackend(t, fs)
+	if c := collect(t, b, helloReq); c.err != nil {
+		t.Fatal(c.err)
+	}
+	if n := len(fs.chatRequests()); n != 1 {
+		t.Errorf("%d chat calls, want 1", n)
+	}
 }
 
 func TestSearchAuthErrorEndsReply(t *testing.T) {

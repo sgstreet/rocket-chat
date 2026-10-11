@@ -430,11 +430,19 @@ func (b *Backend) chatWithSearch(ctx context.Context, model string, cr *api.Chat
 	var (
 		usage  backend.Usage
 		answer strings.Builder
+		// forced is set once the model must answer without tools: it has
+		// used up MaxRounds, or it stopped after searching without
+		// answering.
+		forced bool
 	)
 	for n := 0; ; n++ {
-		cr.Tools = nil
-		if n < s.MaxRounds {
-			cr.Tools = webTools
+		if n >= s.MaxRounds && !forced {
+			forced = true
+			cr.Messages = append(cr.Messages, answerNow)
+		}
+		cr.Tools = webTools
+		if forced {
+			cr.Tools = nil
 		}
 		// Separate text from earlier rounds from this round's text.
 		roundEmit := emit
@@ -462,8 +470,16 @@ func (b *Backend) chatWithSearch(ctx context.Context, model string, cr *api.Chat
 			// Later rounds add search results the next request leaves out.
 			usage.ContextTokens = r.usage.ContextTokens
 		}
-		if len(r.toolCalls) == 0 || cr.Tools == nil {
-			break
+		if forced || len(r.toolCalls) == 0 {
+			// Models often stop after reading the results, or put the
+			// answer only in their thinking, which left the reply as just
+			// the sources. Ask once more for the answer, without tools.
+			if forced || strings.TrimSpace(r.content) != "" || turn.empty() {
+				break
+			}
+			forced = true
+			cr.Messages = append(cr.Messages, answerNow)
+			continue
 		}
 
 		cr.Messages = append(cr.Messages, api.Message{
