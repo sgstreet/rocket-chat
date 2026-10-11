@@ -52,6 +52,16 @@ func searchPrompt(now time.Time) string {
 const citeHint = "When you use these sources, cite them inline by number in square brackets, for example [1]. " +
 	"Only cite numbers that appear in tool results."
 
+// answerNow asks for the answer once the model may no longer call tools,
+// or has stopped after searching without answering. Without it, models
+// given the conversation but no tools often reply with nothing, or with a
+// tool call that cannot run, and the reply shows only the sources.
+var answerNow = api.Message{
+	Role: "user",
+	Content: "Do not call any more tools. Using the tool results above, answer my previous question now. " +
+		citeHint,
+}
+
 // searchTurn tracks the sources gathered while answering one request, so
 // the same URL keeps the same [n] number throughout.
 type searchTurn struct {
@@ -60,11 +70,16 @@ type searchTurn struct {
 	sources  []chat.Source
 	byURL    map[string]int
 	queries  []string
+	// calls counts the tool calls run.
+	calls int
 }
 
 func newSearchTurn(s SearchSettings, searcher webSearcher) *searchTurn {
 	return &searchTurn{settings: s, searcher: searcher, byURL: map[string]int{}}
 }
+
+// empty reports whether the model has not called any tool yet.
+func (t *searchTurn) empty() bool { return t.calls == 0 }
 
 // source registers a source and returns its 1-based number.
 func (t *searchTurn) source(s chat.Source) int {
@@ -88,6 +103,7 @@ func (t *searchTurn) call(ctx context.Context, name string, args api.ToolCallFun
 		text string
 		err  error
 	)
+	t.calls++
 	switch name {
 	case toolWebSearch:
 		text, err = t.search(ctx, stringArg(args, "query"))
